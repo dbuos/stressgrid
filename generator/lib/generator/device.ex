@@ -445,9 +445,16 @@ defmodule Stressgrid.Generator.Device do
       true = Process.demonitor(conn_ref, [:flush])
 
       if stream_ref == nil do
-        %{socket: socket} = :gun.info(conn_pid)
-        :gun_tcp.setopts(socket, [{:linger, {true, 0}}])
-        :gun_tcp.close(socket)
+        :ok =
+          try do
+            %{socket: socket} = :gun.info(conn_pid)
+            :gun_tcp.setopts(socket, [{:linger, {true, 0}}])
+            :gun_tcp.close(socket)
+            :ok
+          catch
+            :exit, {:noproc, {:sys, :get_state, _}} ->
+              :ok
+          end
       end
 
       _ = :gun.shutdown(conn_pid)
