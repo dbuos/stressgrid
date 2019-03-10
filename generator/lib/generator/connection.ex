@@ -66,15 +66,16 @@ defmodule Stressgrid.Generator.Connection do
 
   def handle_info(
         {:gun_down, conn_pid, :ws, reason, _, _},
-        %Connection{conn_pid: conn_pid, cohorts: cohorts} = connection
+        %Connection{conn_pid: conn_pid} = connection
       ) do
-    :ok =
-      cohorts
-      |> Enum.each(fn {_, pid} ->
-        :ok = Cohort.Supervisor.terminate_child(pid)
-      end)
+    {:stop, {:disconnected, reason}, terminate_cohorts(connection)}
+  end
 
-    {:stop, {:disconnected, reason}, connection}
+  def handle_info(
+        {:gun_error, conn_pid, _, reason},
+        %Connection{conn_pid: conn_pid} = connection
+      ) do
+    {:stop, {:error, reason}, terminate_cohorts(connection)}
   end
 
   def handle_info(
@@ -247,6 +248,16 @@ defmodule Stressgrid.Generator.Connection do
          hist_binaries: hist_binaries
        }}
     ])
+  end
+
+  defp terminate_cohorts(%Connection{cohorts: cohorts} = connection) do
+    :ok =
+      cohorts
+      |> Enum.each(fn {_, pid} ->
+        :ok = Cohort.Supervisor.terminate_child(pid)
+      end)
+
+    %{connection | cohorts: %{}}
   end
 
   def read_net_dev do
