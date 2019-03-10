@@ -1,7 +1,13 @@
 defmodule Stressgrid.Coordinator.ManagementConnection do
   @moduledoc false
 
-  alias Stressgrid.Coordinator.{ManagementConnection, Scheduler, GeneratorRegistry, Reporter}
+  alias Stressgrid.Coordinator.{
+    ManagementConnection,
+    Scheduler,
+    GeneratorRegistry,
+    Reporter,
+    GeneratorBasics
+  }
 
   @behaviour :cowboy_websocket
 
@@ -17,24 +23,19 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
     {:ok, registration_ids} = GeneratorRegistry.get_registration_ids()
     {:ok, runs} = Scheduler.get_runs_json()
     {:ok, reports} = Reporter.get_reports_json()
-    {:ok, utilizations, active_counts} = Reporter.get_conns_info()
+    {:ok, generator_basics} = Reporter.get_generator_basics()
 
     generators =
       registration_ids
       |> Enum.map(fn id ->
-        active_count =
-          active_counts
-          |> Map.get(id)
-
-        utilization =
-          utilizations
+        basics =
+          generator_basics
           |> Map.get(id)
 
         %{
-          "id" => id,
-          "active_count" => active_count
+          "id" => id
         }
-        |> Map.merge(Reporter.utilization_to_json(utilization))
+        |> Map.merge(GeneratorBasics.to_json(basics))
       end)
 
     :ok =

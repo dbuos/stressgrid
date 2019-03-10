@@ -131,11 +131,11 @@ defmodule Stressgrid.Generator.Connection do
   def handle_info(:report, %Connection{} = connection) do
     Process.send_after(self(), :report, @report_interval)
 
-    {hists, counters, active_count} =
+    {hists, counters, active_device_count} =
       Supervisor.which_children(Cohort.Supervisor)
       |> Enum.reduce({%{}, %{}, 0}, fn {_, cohort_pid, _, _}, a ->
         Supervisor.which_children(cohort_pid)
-        |> Enum.reduce(a, fn {_, device_pid, _, _}, {hists, counters, active_count} ->
+        |> Enum.reduce(a, fn {_, device_pid, _, _}, {hists, counters, active_device_count} ->
           {:ok, is_active, hists, device_counters} = Device.collect(device_pid, hists)
 
           counters =
@@ -145,7 +145,7 @@ defmodule Stressgrid.Generator.Connection do
               |> Map.update(key, value, fn c -> c + value end)
             end)
 
-          {hists, counters, active_count + if(is_active, do: 1, else: 0)}
+          {hists, counters, active_device_count + if(is_active, do: 1, else: 0)}
         end)
       end)
 
@@ -157,11 +157,16 @@ defmodule Stressgrid.Generator.Connection do
       connection
       |> network_utilization()
 
-    utilization = %{cpu: cpu, network_rx: network_rx, network_tx: network_tx}
+    basics = %{
+      cpu: cpu,
+      network_rx: network_rx,
+      network_tx: network_tx,
+      active_device_count: active_device_count
+    }
 
     connection =
       connection
-      |> push_stats(utilization, active_count, counters, hists)
+      |> push_stats(basics, counters, hists)
 
     {:noreply, connection}
   end
@@ -225,7 +230,7 @@ defmodule Stressgrid.Generator.Connection do
     |> send_terms([{:register, %{id: id}}])
   end
 
-  defp push_stats(connection, utilization, active_count, counters, hists) do
+  defp push_stats(connection, basics, counters, hists) do
     hist_binaries =
       hists
       |> Enum.map(fn {key, hist} ->
@@ -237,8 +242,7 @@ defmodule Stressgrid.Generator.Connection do
     |> send_terms([
       {:push_stats,
        %{
-         utilization: utilization,
-         active_count: active_count,
+         basics: basics,
          counters: counters,
          hist_binaries: hist_binaries
        }}

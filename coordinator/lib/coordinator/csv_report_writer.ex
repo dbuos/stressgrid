@@ -1,22 +1,20 @@
 defmodule Stressgrid.Coordinator.CsvReportWriter do
   @moduledoc false
 
-  alias Stressgrid.Coordinator.{ReportWriter, CsvReportWriter}
+  alias Stressgrid.Coordinator.{ReportWriter, CsvReportWriter, GeneratorBasics}
 
   @behaviour ReportWriter
 
   @management_base "priv/management"
   @results_base "results"
 
-  defstruct metrics_table: %{},
-            utilization_table: %{},
-            active_counts_table: %{}
+  defstruct table: %{}
 
   def init() do
     %CsvReportWriter{}
   end
 
-  def write_hists(_, clock, %CsvReportWriter{metrics_table: metrics_table} = writer, hists) do
+  def write_hists(_, clock, %CsvReportWriter{table: table} = writer, hists) do
     row =
       hists
       |> Enum.filter(fn {_, hist} ->
@@ -51,54 +49,68 @@ defmodule Stressgrid.Coordinator.CsvReportWriter do
       end)
       |> Enum.concat()
       |> Map.new()
-      |> Map.merge(metrics_table |> Map.get(clock, %{}))
+      |> Map.merge(table |> Map.get(clock, %{}))
 
-    %{writer | metrics_table: metrics_table |> Map.put(clock, row)}
+    %{writer | table: table |> Map.put(clock, row)}
   end
 
-  def write_scalars(_, clock, %CsvReportWriter{metrics_table: metrics_table} = writer, scalars) do
+  def write_scalars(_, clock, %CsvReportWriter{table: table} = writer, scalars) do
     row =
       scalars
       |> Map.new()
-      |> Map.merge(metrics_table |> Map.get(clock, %{}))
+      |> Map.merge(table |> Map.get(clock, %{}))
 
-    %{writer | metrics_table: metrics_table |> Map.put(clock, row)}
+    %{writer | table: table |> Map.put(clock, row)}
   end
 
-  def write_utilizations(
+  def write_basics(
         _,
         clock,
-        %CsvReportWriter{utilization_table: utilization_table} = writer,
-        utilizations
+        %CsvReportWriter{table: table} = writer,
+        basics
       ) do
-    utilization_count = Enum.count(utilizations)
+    basics_count = Enum.count(basics)
 
     average_cpu =
-      if utilization_count === 0 do
+      if basics_count === 0 do
         0
       else
-        (utilizations
-         |> Enum.map(fn {_, %{cpu: cpu}} -> cpu end)
-         |> Enum.sum()) / utilization_count
+        (basics
+         |> Enum.map(fn {_, %GeneratorBasics{cpu: cpu}} -> cpu end)
+         |> Enum.sum()) / basics_count
       end
 
     total_network_rx =
-      utilizations
-      |> Enum.map(fn {_, %{network_rx: network_rx}} -> network_rx end)
+      basics
+      |> Enum.map(fn {_, %GeneratorBasics{network_rx: network_rx}} -> network_rx end)
       |> Enum.sum()
 
     total_network_tx =
-      utilizations
-      |> Enum.map(fn {_, %{network_tx: network_tx}} -> network_tx end)
+      basics
+      |> Enum.map(fn {_, %GeneratorBasics{network_tx: network_tx}} -> network_tx end)
+      |> Enum.sum()
+
+    total_active_device_count =
+      basics
+      |> Enum.map(fn {_, %GeneratorBasics{active_device_count: active_device_count}} ->
+        active_device_count
+      end)
       |> Enum.sum()
 
     row =
-      utilizations
-      |> Enum.map(fn {generator, %{cpu: cpu, network_rx: network_rx, network_tx: network_tx}} ->
+      basics
+      |> Enum.map(fn {generator,
+                      %GeneratorBasics{
+                        cpu: cpu,
+                        network_rx: network_rx,
+                        network_tx: network_tx,
+                        active_device_count: active_device_count
+                      }} ->
         [
           {:"#{generator}_cpu", cpu},
           {:"#{generator}_network_rx", network_rx},
-          {:"#{generator}_network_tx", network_tx}
+          {:"#{generator}_network_tx", network_tx},
+          {:"#{generator}_active_device_count", active_device_count}
         ]
       end)
       |> Enum.concat()
@@ -106,41 +118,19 @@ defmodule Stressgrid.Coordinator.CsvReportWriter do
       |> Map.put(:average_cpu, average_cpu)
       |> Map.put(:total_network_rx, total_network_rx)
       |> Map.put(:total_network_tx, total_network_tx)
+      |> Map.put(:total_active_device_count, total_active_device_count)
+      |> Map.merge(table |> Map.get(clock, %{}))
 
-    %{writer | utilization_table: utilization_table |> Map.put(clock, row)}
-  end
-
-  def write_active_counts(
-        _,
-        clock,
-        %CsvReportWriter{active_counts_table: active_counts_table} = writer,
-        active_counts
-      ) do
-    values =
-      active_counts
-      |> Enum.map(fn {_, v} -> v end)
-
-    total = values |> Enum.sum()
-
-    row =
-      active_counts
-      |> Map.new()
-      |> Map.put(:total, total)
-
-    %{writer | active_counts_table: active_counts_table |> Map.put(clock, row)}
+    %{writer | table: table |> Map.put(clock, row)}
   end
 
   def finish(result_info, id, %CsvReportWriter{
-        metrics_table: metrics_table,
-        utilization_table: utilization_table,
-        active_counts_table: active_counts_table
+        table: table
       }) do
     tmp_directory = Path.join([System.tmp_dir(), id])
     File.mkdir_p!(tmp_directory)
 
-    write_csv(metrics_table, Path.join([tmp_directory, "metrics.csv"]))
-    write_csv(utilization_table, Path.join([tmp_directory, "utilization.csv"]))
-    write_csv(active_counts_table, Path.join([tmp_directory, "active_counts.csv"]))
+    write_csv(table, Path.join([tmp_directory, "results.csv"]))
 
     filename = "#{id}.tar.gz"
     directory = Path.join([Application.app_dir(:coordinator), @management_base, @results_base])

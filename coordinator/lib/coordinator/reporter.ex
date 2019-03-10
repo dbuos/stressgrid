@@ -1,11 +1,10 @@
 defmodule Stressgrid.Coordinator.Reporter do
   use GenServer
 
-  alias Stressgrid.Coordinator.{Reporter, ManagementConnection}
+  alias Stressgrid.Coordinator.{Reporter, ManagementConnection, GeneratorBasics}
 
   defstruct writer_configs: [],
-            conn_utilizations: %{},
-            conn_active_counts: %{},
+            generator_basics: %{},
             runs: %{},
             reports: %{}
 
@@ -18,51 +17,37 @@ defmodule Stressgrid.Coordinator.Reporter do
               hists: %{},
               counters: %{},
               prev_counters: %{},
-              max_utilization: nil,
+              max_basics: nil,
               writers: []
   end
 
   defmodule Report do
     defstruct name: nil,
-              max_utilization: nil,
+              max_basics: nil,
               result_json: %{}
-  end
-
-  def utilization_to_json(utilization, prefix \\ "")
-
-  def utilization_to_json(nil, _) do
-    %{}
-  end
-
-  def utilization_to_json(%{cpu: cpu, network_rx: network_rx, network_tx: network_tx}, prefix) do
-    %{
-      "#{prefix}cpu" => cpu,
-      "#{prefix}network_rx" => network_rx,
-      "#{prefix}network_tx" => network_tx
-    }
   end
 
   def report_to_json(id, %Report{
         name: name,
         result_json: result_json,
-        max_utilization: max_utilization
+        max_basics: max_basics
       }) do
     %{
       "id" => id,
       "name" => name,
       "result" => result_json
     }
-    |> Map.merge(utilization_to_json(max_utilization, "max_"))
+    |> Map.merge(GeneratorBasics.to_json(max_basics, "max_"))
   end
 
-  def get_conns_info() do
-    GenServer.call(__MODULE__, :get_conns_info)
+  def get_generator_basics() do
+    GenServer.call(__MODULE__, :get_generator_basics)
   end
 
-  def push_stats(conn_id, utilization, active_count, counters, hist_binaries) do
+  def push_stats(generator_id, stats) do
     GenServer.cast(
       __MODULE__,
-      {:push_stats, conn_id, utilization, active_count, counters, hist_binaries}
+      {:push_stats, generator_id, stats}
     )
   end
 
@@ -97,14 +82,13 @@ defmodule Stressgrid.Coordinator.Reporter do
   end
 
   def handle_call(
-        :get_conns_info,
+        :get_generator_basics,
         _,
         %Reporter{
-          conn_utilizations: conn_utilizations,
-          conn_active_counts: conn_active_counts
+          generator_basics: generator_basics
         } = reporter
       ) do
-    {:reply, {:ok, conn_utilizations, conn_active_counts}, reporter}
+    {:reply, {:ok, generator_basics}, reporter}
   end
 
   def handle_call(:get_reports_json, _, %Reporter{reports: reports} = reporter) do
@@ -118,31 +102,29 @@ defmodule Stressgrid.Coordinator.Reporter do
   end
 
   def handle_cast(
-        {:push_stats, conn_id, utilization, active_count, push_counters, push_hist_binaries},
+        {:push_stats, generator_id,
+         %{
+           basics: push_basics,
+           counters: push_counters,
+           hist_binaries: push_hist_binaries
+         }},
         %Reporter{
-          conn_active_counts: conn_active_counts,
-          conn_utilizations: conn_utilizations,
+          generator_basics: generator_basics,
           runs: runs
         } = reporter
       ) do
-    conn_active_counts =
-      conn_active_counts
-      |> Map.put(conn_id, active_count)
+    generator_basics =
+      generator_basics
+      |> Map.put(generator_id, GeneratorBasics.new(push_basics))
 
-    conn_utilizations =
-      conn_utilizations
-      |> Map.put(conn_id, utilization)
-
-    max_utilization =
-      conn_utilizations
+    max_basics =
+      generator_basics
       |> Map.values()
-      |> Enum.reduce(nil, &max_utilization(&1, &2))
+      |> Enum.reduce(nil, &max_basics(&1, &2))
 
     runs =
       runs
-      |> Enum.map(fn {id,
-                      %Run{counters: counters, hists: hists, max_utilization: max_utilization0} =
-                        run} ->
+      |> Enum.map(fn {id, %Run{counters: counters, hists: hists, max_basics: max_basics0} = run} ->
         counters =
           push_counters
           |> Enum.reduce(counters, fn {key, value}, counters ->
@@ -168,7 +150,7 @@ defmodule Stressgrid.Coordinator.Reporter do
            run
            | hists: hists,
              counters: counters,
-             max_utilization: max_utilization(max_utilization, max_utilization0)
+             max_basics: max_basics(max_basics, max_basics0)
          }}
       end)
       |> Map.new()
@@ -176,8 +158,7 @@ defmodule Stressgrid.Coordinator.Reporter do
     {:noreply,
      %{
        reporter
-       | conn_active_counts: conn_active_counts,
-         conn_utilizations: conn_utilizations,
+       | generator_basics: generator_basics,
          runs: runs
      }}
   end
@@ -202,14 +183,14 @@ defmodule Stressgrid.Coordinator.Reporter do
         %Reporter{runs: runs, reports: reports, writer_configs: writer_configs} = reporter
       ) do
     case runs |> Map.get(id) do
-      %Run{name: name, max_utilization: max_utilization, writers: writers} ->
+      %Run{name: name, max_basics: max_basics, writers: writers} ->
         result_json =
           Enum.zip(writer_configs, writers)
           |> Enum.reduce(%{}, fn {{module, _}, writer}, r ->
             Kernel.apply(module, :finish, [r, id, writer])
           end)
 
-        report = %Report{name: name, max_utilization: max_utilization, result_json: result_json}
+        report = %Report{name: name, max_basics: max_basics, result_json: result_json}
 
         :ok = ManagementConnection.notify(%{"report_added" => report_to_json(id, report)})
 
@@ -228,23 +209,17 @@ defmodule Stressgrid.Coordinator.Reporter do
   def handle_cast(
         {:clear_stats, conn_id},
         %Reporter{
-          conn_active_counts: conn_active_counts,
-          conn_utilizations: conn_utilizations
+          generator_basics: generator_basics
         } = reporter
       ) do
-    conn_active_counts =
-      conn_active_counts
-      |> Map.delete(conn_id)
-
-    conn_utilizations =
-      conn_utilizations
+    generator_basics =
+      generator_basics
       |> Map.delete(conn_id)
 
     {:noreply,
      %{
        reporter
-       | conn_active_counts: conn_active_counts,
-         conn_utilizations: conn_utilizations
+       | generator_basics: generator_basics
      }}
   end
 
@@ -271,8 +246,7 @@ defmodule Stressgrid.Coordinator.Reporter do
         {:report, id},
         %Reporter{
           writer_configs: writer_configs,
-          conn_utilizations: conn_utilizations,
-          conn_active_counts: conn_active_counts,
+          generator_basics: generator_basics,
           runs: runs
         } = reporter
       ) do
@@ -308,19 +282,11 @@ defmodule Stressgrid.Coordinator.Reporter do
             writer = Kernel.apply(module, :write_hists, [id, clock, writer, hists])
             writer = Kernel.apply(module, :write_scalars, [id, clock, writer, scalars])
 
-            writer =
-              Kernel.apply(module, :write_utilizations, [
-                id,
-                clock,
-                writer,
-                conn_utilizations |> Map.to_list()
-              ])
-
-            Kernel.apply(module, :write_active_counts, [
+            Kernel.apply(module, :write_basics, [
               id,
               clock,
               writer,
-              conn_active_counts |> Map.to_list()
+              generator_basics |> Map.to_list()
             ])
           end)
 
@@ -341,27 +307,20 @@ defmodule Stressgrid.Coordinator.Reporter do
   def handle_info(
         :notify,
         %Reporter{
-          conn_utilizations: conn_utilizations,
-          conn_active_counts: conn_active_counts
+          generator_basics: generator_basics
         } = reporter
       ) do
     Process.send_after(self(), :notify, @notify_interval)
 
     :ok =
-      conn_utilizations
-      |> Enum.map(fn {id, %{cpu: cpu, network_rx: network_rx, network_tx: network_tx}} ->
-        conn_active_count =
-          conn_active_counts
-          |> Map.get(id)
-
+      generator_basics
+      |> Enum.map(fn {id, basics} ->
         %{
-          "generator_changed" => %{
-            "id" => id,
-            "cpu" => cpu,
-            "network_rx" => network_rx,
-            "network_tx" => network_tx,
-            "active_count" => conn_active_count
-          }
+          "generator_changed" =>
+            %{
+              "id" => id
+            }
+            |> Map.merge(GeneratorBasics.to_json(basics))
         }
       end)
       |> ManagementConnection.notify_many()
@@ -369,23 +328,33 @@ defmodule Stressgrid.Coordinator.Reporter do
     {:noreply, reporter}
   end
 
-  defp max_utilization(nil, _) do
+  defp max_basics(nil, _) do
     nil
   end
 
-  defp max_utilization(utilization, nil) do
-    utilization
+  defp max_basics(basics, nil) do
+    basics
   end
 
-  defp max_utilization(%{cpu: cpu0, network_rx: network_rx0, network_tx: network_tx0}, %{
-         cpu: cpu1,
-         network_rx: network_rx1,
-         network_tx: network_tx1
-       }) do
-    %{
+  defp max_basics(
+         %GeneratorBasics{
+           cpu: cpu0,
+           network_rx: network_rx0,
+           network_tx: network_tx0,
+           active_device_count: active_device_count0
+         },
+         %GeneratorBasics{
+           cpu: cpu1,
+           network_rx: network_rx1,
+           network_tx: network_tx1,
+           active_device_count: active_device_count1
+         }
+       ) do
+    %GeneratorBasics{
       cpu: max(cpu0, cpu1),
       network_rx: max(network_rx0, network_rx1),
-      network_tx: max(network_tx0, network_tx1)
+      network_tx: max(network_tx0, network_tx1),
+      active_device_count: max(active_device_count0, active_device_count1)
     }
   end
 end

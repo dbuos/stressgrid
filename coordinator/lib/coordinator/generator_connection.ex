@@ -52,15 +52,9 @@ defmodule Stressgrid.Coordinator.GeneratorConnection do
 
   defp receive_term(
          %GeneratorConnection{id: id} = connection,
-         {:push_stats,
-          %{
-            utilization: utilization,
-            active_count: active_count,
-            counters: counters,
-            hist_binaries: hist_binaries
-          }}
+         {:push_stats, stats}
        ) do
-    :ok = Reporter.push_stats(id, utilization, active_count, counters, hist_binaries)
+    :ok = Reporter.push_stats(id, stats)
     connection
   end
 
