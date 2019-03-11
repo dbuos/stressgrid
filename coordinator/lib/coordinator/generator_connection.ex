@@ -52,9 +52,9 @@ defmodule Stressgrid.Coordinator.GeneratorConnection do
 
   defp receive_term(
          %GeneratorConnection{id: id} = connection,
-         {:push_stats, stats}
+         {:push_telemetry, telemetry}
        ) do
-    :ok = Reporter.push_stats(id, stats)
+    :ok = Reporter.push_telemetry(id, telemetry)
     connection
   end
 

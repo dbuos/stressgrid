@@ -132,21 +132,24 @@ defmodule Stressgrid.Generator.Connection do
   def handle_info(:report, %Connection{} = connection) do
     Process.send_after(self(), :report, @report_interval)
 
-    {hists, counters, active_device_count} =
+    {aggregate_hists, aggregate_counters, active_device_count} =
       Supervisor.which_children(Cohort.Supervisor)
       |> Enum.reduce({%{}, %{}, 0}, fn {_, cohort_pid, _, _}, a ->
         Supervisor.which_children(cohort_pid)
-        |> Enum.reduce(a, fn {_, device_pid, _, _}, {hists, counters, active_device_count} ->
-          {:ok, is_active, hists, device_counters} = Device.collect(device_pid, hists)
+        |> Enum.reduce(a, fn {_, device_pid, _, _},
+                             {aggregate_hists, aggregate_counters, active_device_count} ->
+          {:ok, is_active, aggregate_hists, device_counters} =
+            Device.collect(device_pid, aggregate_hists)
 
-          counters =
+          aggregate_counters =
             device_counters
-            |> Enum.reduce(counters, fn {key, value}, counters ->
+            |> Enum.reduce(aggregate_counters, fn {key, value}, counters ->
               counters
               |> Map.update(key, value, fn c -> c + value end)
             end)
 
-          {hists, counters, active_device_count + if(is_active, do: 1, else: 0)}
+          {aggregate_hists, aggregate_counters,
+           active_device_count + if(is_active, do: 1, else: 0)}
         end)
       end)
 
@@ -158,16 +161,23 @@ defmodule Stressgrid.Generator.Connection do
       connection
       |> network_utilization()
 
-    basics = %{
+    telemetry = %{
       cpu: cpu,
       network_rx: network_rx,
       network_tx: network_tx,
-      active_device_count: active_device_count
+      active_device_count: active_device_count,
+      counters: aggregate_counters,
+      hists:
+        aggregate_hists
+        |> Enum.map(fn {key, hist} ->
+          {key, :hdr_histogram.to_binary(hist)}
+        end)
+        |> Map.new()
     }
 
     connection =
       connection
-      |> push_stats(basics, counters, hists)
+      |> push_telemetry(telemetry)
 
     {:noreply, connection}
   end
@@ -231,23 +241,9 @@ defmodule Stressgrid.Generator.Connection do
     |> send_terms([{:register, %{id: id}}])
   end
 
-  defp push_stats(connection, basics, counters, hists) do
-    hist_binaries =
-      hists
-      |> Enum.map(fn {key, hist} ->
-        {key, :hdr_histogram.to_binary(hist)}
-      end)
-      |> Map.new()
-
+  defp push_telemetry(connection, telemetry) do
     connection
-    |> send_terms([
-      {:push_stats,
-       %{
-         basics: basics,
-         counters: counters,
-         hist_binaries: hist_binaries
-       }}
-    ])
+    |> send_terms([{:push_telemetry, telemetry}])
   end
 
   defp terminate_cohorts(%Connection{cohorts: cohorts} = connection) do

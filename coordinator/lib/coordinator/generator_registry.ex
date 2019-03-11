@@ -8,8 +8,7 @@ defmodule Stressgrid.Coordinator.GeneratorRegistry do
     GeneratorRegistry,
     Utils,
     Reporter,
-    GeneratorConnection,
-    ManagementConnection
+    GeneratorConnection
   }
 
   defstruct registrations: %{},
@@ -31,20 +30,8 @@ defmodule Stressgrid.Coordinator.GeneratorRegistry do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
-  def get_registration_ids() do
-    GenServer.call(__MODULE__, :get_registration_ids)
-  end
-
   def init(_args) do
     {:ok, %GeneratorRegistry{}}
-  end
-
-  def handle_call(
-        :get_registration_ids,
-        _,
-        %GeneratorRegistry{registrations: registrations} = registry
-      ) do
-    {:reply, {:ok, registrations |> Map.keys()}, registry}
   end
 
   def handle_cast(
@@ -53,7 +40,6 @@ defmodule Stressgrid.Coordinator.GeneratorRegistry do
       ) do
     ref = :erlang.monitor(:process, pid)
     Logger.info("Registered generator #{id}")
-    :ok = ManagementConnection.notify(%{"generator_changed" => %{"id" => id}})
 
     {:noreply,
      %{
@@ -103,7 +89,6 @@ defmodule Stressgrid.Coordinator.GeneratorRegistry do
 
       id ->
         Logger.info("Unregistered generator #{id}: #{inspect(reason)}")
-        :ok = ManagementConnection.notify(%{"generator_removed" => %{"id" => id}})
         :ok = Reporter.clear_stats(id)
 
         {:noreply,

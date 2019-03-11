@@ -1,7 +1,7 @@
 defmodule Stressgrid.Coordinator.CsvReportWriter do
   @moduledoc false
 
-  alias Stressgrid.Coordinator.{ReportWriter, CsvReportWriter, GeneratorBasics}
+  alias Stressgrid.Coordinator.{ReportWriter, CsvReportWriter, GeneratorTelemetry}
 
   @behaviour ReportWriter
 
@@ -63,44 +63,44 @@ defmodule Stressgrid.Coordinator.CsvReportWriter do
     %{writer | table: table |> Map.put(clock, row)}
   end
 
-  def write_basics(
+  def write_generator_telemetries(
         _,
         clock,
         %CsvReportWriter{table: table} = writer,
-        basics
+        generator_telemetries
       ) do
-    basics_count = Enum.count(basics)
+    generator_telemetries_length = length(generator_telemetries)
 
     average_cpu =
-      if basics_count === 0 do
+      if generator_telemetries_length === 0 do
         0
       else
-        (basics
-         |> Enum.map(fn {_, %GeneratorBasics{cpu: cpu}} -> cpu end)
-         |> Enum.sum()) / basics_count
+        (generator_telemetries
+         |> Enum.map(fn {_, %GeneratorTelemetry{cpu: cpu}} -> cpu end)
+         |> Enum.sum()) / generator_telemetries_length
       end
 
     total_network_rx =
-      basics
-      |> Enum.map(fn {_, %GeneratorBasics{network_rx: network_rx}} -> network_rx end)
+      generator_telemetries
+      |> Enum.map(fn {_, %GeneratorTelemetry{network_rx: network_rx}} -> network_rx end)
       |> Enum.sum()
 
     total_network_tx =
-      basics
-      |> Enum.map(fn {_, %GeneratorBasics{network_tx: network_tx}} -> network_tx end)
+      generator_telemetries
+      |> Enum.map(fn {_, %GeneratorTelemetry{network_tx: network_tx}} -> network_tx end)
       |> Enum.sum()
 
     total_active_device_count =
-      basics
-      |> Enum.map(fn {_, %GeneratorBasics{active_device_count: active_device_count}} ->
+      generator_telemetries
+      |> Enum.map(fn {_, %GeneratorTelemetry{active_device_count: active_device_count}} ->
         active_device_count
       end)
       |> Enum.sum()
 
     row =
-      basics
+      generator_telemetries
       |> Enum.map(fn {generator,
-                      %GeneratorBasics{
+                      %GeneratorTelemetry{
                         cpu: cpu,
                         network_rx: network_rx,
                         network_tx: network_tx,

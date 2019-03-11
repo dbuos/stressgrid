@@ -12,7 +12,7 @@ import App from './App';
 import './index.css';
 // import registerServiceWorker from './registerServiceWorker';
 
-import generatorsStore from './stores/GeneratorsStore'
+import gridStore from './stores/GridStore'
 import reportsStore from './stores/ReportsStore';
 import runsStore from './stores/RunsStore'
 import ws from './Ws';
@@ -28,7 +28,7 @@ const wsUrl = location.port === "3000" ?
 ws.connect(wsUrl);
 
 ReactDOM.render(
-  <Provider generatorsStore={generatorsStore} runsStore={runsStore} reportsStore={reportsStore} ws={ws}>
+  <Provider gridStore={gridStore} runsStore={runsStore} reportsStore={reportsStore} ws={ws}>
     <App />
   </Provider>,
   document.getElementById('root') as HTMLElement

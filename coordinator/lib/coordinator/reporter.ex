@@ -1,15 +1,18 @@
 defmodule Stressgrid.Coordinator.Reporter do
   use GenServer
 
-  alias Stressgrid.Coordinator.{Reporter, ManagementConnection, GeneratorBasics}
+  alias Stressgrid.Coordinator.{Reporter, ManagementConnection, GeneratorTelemetry}
 
   defstruct writer_configs: [],
-            generator_basics: %{},
+            generator_telemetries: %{},
+            aggregated_telemetries: [],
+            aggregated_generator_counts: [],
             runs: %{},
             reports: %{}
 
   @report_interval 60_000
   @notify_interval 1_000
+  @aggregated_max_size 60
 
   defmodule Run do
     defstruct name: nil,
@@ -17,37 +20,33 @@ defmodule Stressgrid.Coordinator.Reporter do
               hists: %{},
               counters: %{},
               prev_counters: %{},
-              max_basics: nil,
+              max_telemetry: nil,
               writers: []
   end
 
   defmodule Report do
     defstruct name: nil,
-              max_basics: nil,
+              max_telemetry: nil,
               result_json: %{}
   end
 
   def report_to_json(id, %Report{
         name: name,
         result_json: result_json,
-        max_basics: max_basics
+        max_telemetry: max_telemetry
       }) do
     %{
       "id" => id,
       "name" => name,
       "result" => result_json
     }
-    |> Map.merge(GeneratorBasics.to_json(max_basics, "max_"))
+    |> Map.merge(max_telemetry |> GeneratorTelemetry.to_json("max_"))
   end
 
-  def get_generator_basics() do
-    GenServer.call(__MODULE__, :get_generator_basics)
-  end
-
-  def push_stats(generator_id, stats) do
+  def push_telemetry(generator_id, telemetry) do
     GenServer.cast(
       __MODULE__,
-      {:push_stats, generator_id, stats}
+      {:push_telemetry, generator_id, telemetry}
     )
   end
 
@@ -81,16 +80,6 @@ defmodule Stressgrid.Coordinator.Reporter do
     {:ok, %Reporter{writer_configs: args |> Keyword.get(:writer_configs, [])}}
   end
 
-  def handle_call(
-        :get_generator_basics,
-        _,
-        %Reporter{
-          generator_basics: generator_basics
-        } = reporter
-      ) do
-    {:reply, {:ok, generator_basics}, reporter}
-  end
-
   def handle_call(:get_reports_json, _, %Reporter{reports: reports} = reporter) do
     reports_json =
       reports
@@ -102,29 +91,27 @@ defmodule Stressgrid.Coordinator.Reporter do
   end
 
   def handle_cast(
-        {:push_stats, generator_id,
-         %{
-           basics: push_basics,
-           counters: push_counters,
-           hist_binaries: push_hist_binaries
-         }},
+        {:push_telemetry, generator_id, telemetry},
         %Reporter{
-          generator_basics: generator_basics,
+          generator_telemetries: generator_telemetries,
           runs: runs
         } = reporter
       ) do
-    generator_basics =
-      generator_basics
-      |> Map.put(generator_id, GeneratorBasics.new(push_basics))
+    %{counters: push_counters, hists: push_hists} = telemetry
 
-    max_basics =
-      generator_basics
+    generator_telemetries =
+      generator_telemetries
+      |> Map.put(generator_id, GeneratorTelemetry.new(telemetry))
+
+    max_telemetry =
+      generator_telemetries
       |> Map.values()
-      |> Enum.reduce(nil, &max_basics(&1, &2))
+      |> Enum.reduce(nil, &max_telemetry(&1, &2))
 
     runs =
       runs
-      |> Enum.map(fn {id, %Run{counters: counters, hists: hists, max_basics: max_basics0} = run} ->
+      |> Enum.map(fn {id,
+                      %Run{counters: counters, hists: hists, max_telemetry: max_telemetry0} = run} ->
         counters =
           push_counters
           |> Enum.reduce(counters, fn {key, value}, counters ->
@@ -133,15 +120,15 @@ defmodule Stressgrid.Coordinator.Reporter do
           end)
 
         hists =
-          push_hist_binaries
-          |> Enum.reduce(hists, fn {key, push_hist_binary}, hists ->
-            {:ok, push_hist} = :hdr_histogram.from_binary(push_hist_binary)
+          push_hists
+          |> Enum.reduce(hists, fn {key, push_hist}, hists ->
+            {:ok, hist} = :hdr_histogram.from_binary(push_hist)
 
             hists
-            |> Map.update(key, push_hist, fn hist ->
-              :hdr_histogram.add(hist, push_hist)
-              :hdr_histogram.close(push_hist)
-              hist
+            |> Map.update(key, hist, fn hist0 ->
+              :hdr_histogram.add(hist0, hist)
+              :hdr_histogram.close(hist)
+              hist0
             end)
           end)
 
@@ -150,7 +137,7 @@ defmodule Stressgrid.Coordinator.Reporter do
            run
            | hists: hists,
              counters: counters,
-             max_basics: max_basics(max_basics, max_basics0)
+             max_telemetry: max_telemetry(max_telemetry, max_telemetry0)
          }}
       end)
       |> Map.new()
@@ -158,7 +145,7 @@ defmodule Stressgrid.Coordinator.Reporter do
     {:noreply,
      %{
        reporter
-       | generator_basics: generator_basics,
+       | generator_telemetries: generator_telemetries,
          runs: runs
      }}
   end
@@ -183,14 +170,14 @@ defmodule Stressgrid.Coordinator.Reporter do
         %Reporter{runs: runs, reports: reports, writer_configs: writer_configs} = reporter
       ) do
     case runs |> Map.get(id) do
-      %Run{name: name, max_basics: max_basics, writers: writers} ->
+      %Run{name: name, max_telemetry: max_telemetry, writers: writers} ->
         result_json =
           Enum.zip(writer_configs, writers)
           |> Enum.reduce(%{}, fn {{module, _}, writer}, r ->
             Kernel.apply(module, :finish, [r, id, writer])
           end)
 
-        report = %Report{name: name, max_basics: max_basics, result_json: result_json}
+        report = %Report{name: name, max_telemetry: max_telemetry, result_json: result_json}
 
         :ok = ManagementConnection.notify(%{"report_added" => report_to_json(id, report)})
 
@@ -209,17 +196,17 @@ defmodule Stressgrid.Coordinator.Reporter do
   def handle_cast(
         {:clear_stats, conn_id},
         %Reporter{
-          generator_basics: generator_basics
+          generator_telemetries: generator_telemetries
         } = reporter
       ) do
-    generator_basics =
-      generator_basics
+    generator_telemetries =
+      generator_telemetries
       |> Map.delete(conn_id)
 
     {:noreply,
      %{
        reporter
-       | generator_basics: generator_basics
+       | generator_telemetries: generator_telemetries
      }}
   end
 
@@ -246,7 +233,7 @@ defmodule Stressgrid.Coordinator.Reporter do
         {:report, id},
         %Reporter{
           writer_configs: writer_configs,
-          generator_basics: generator_basics,
+          generator_telemetries: generator_telemetries,
           runs: runs
         } = reporter
       ) do
@@ -282,11 +269,11 @@ defmodule Stressgrid.Coordinator.Reporter do
             writer = Kernel.apply(module, :write_hists, [id, clock, writer, hists])
             writer = Kernel.apply(module, :write_scalars, [id, clock, writer, scalars])
 
-            Kernel.apply(module, :write_basics, [
+            Kernel.apply(module, :write_generator_telemetries, [
               id,
               clock,
               writer,
-              generator_basics |> Map.to_list()
+              generator_telemetries |> Map.to_list()
             ])
           end)
 
@@ -307,54 +294,96 @@ defmodule Stressgrid.Coordinator.Reporter do
   def handle_info(
         :notify,
         %Reporter{
-          generator_basics: generator_basics
+          generator_telemetries: generator_telemetries,
+          aggregated_telemetries: aggregated_telemetries,
+          aggregated_generator_counts: aggregated_generator_counts
         } = reporter
       ) do
     Process.send_after(self(), :notify, @notify_interval)
 
-    :ok =
-      generator_basics
-      |> Enum.map(fn {id, basics} ->
-        %{
-          "generator_changed" =>
-            %{
-              "id" => id
-            }
-            |> Map.merge(GeneratorBasics.to_json(basics))
-        }
-      end)
-      |> ManagementConnection.notify_many()
+    aggregated_telemetry =
+      generator_telemetries
+      |> Map.values()
+      |> aggregate_telemetries()
 
-    {:noreply, reporter}
+    aggregated_telemetries =
+      [aggregated_telemetry | aggregated_telemetries]
+      |> Enum.take(@aggregated_max_size)
+
+    aggregated_generator_counts =
+      [Map.size(generator_telemetries) | aggregated_generator_counts]
+      |> Enum.take(@aggregated_max_size)
+
+    :ok =
+      ManagementConnection.notify(%{
+        "grid_changed" =>
+          %{
+            "recent_generator_count" => aggregated_generator_counts
+          }
+          |> Map.merge(aggregated_telemetries |> GeneratorTelemetry.to_json("recent_"))
+      })
+
+    {:noreply,
+     %{
+       reporter
+       | aggregated_telemetries: aggregated_telemetries,
+         aggregated_generator_counts: aggregated_generator_counts
+     }}
   end
 
-  defp max_basics(nil, _) do
+  defp max_telemetry(nil, _) do
     nil
   end
 
-  defp max_basics(basics, nil) do
-    basics
+  defp max_telemetry(generator_telemetry, nil) do
+    generator_telemetry
   end
 
-  defp max_basics(
-         %GeneratorBasics{
+  defp max_telemetry(
+         %GeneratorTelemetry{
            cpu: cpu0,
            network_rx: network_rx0,
            network_tx: network_tx0,
            active_device_count: active_device_count0
          },
-         %GeneratorBasics{
+         %GeneratorTelemetry{
            cpu: cpu1,
            network_rx: network_rx1,
            network_tx: network_tx1,
            active_device_count: active_device_count1
          }
        ) do
-    %GeneratorBasics{
+    %GeneratorTelemetry{
       cpu: max(cpu0, cpu1),
       network_rx: max(network_rx0, network_rx1),
       network_tx: max(network_tx0, network_tx1),
       active_device_count: max(active_device_count0, active_device_count1)
+    }
+  end
+
+  defp aggregate_telemetries(telemetries) do
+    telemetries_length = length(telemetries)
+
+    %GeneratorTelemetry{
+      cpu:
+        if(telemetries_length === 0,
+          do: 0.0,
+          else: telemetries |> Enum.map(fn %GeneratorTelemetry{cpu: cpu} -> cpu end) |> Enum.max()
+        ),
+      network_rx:
+        telemetries
+        |> Enum.map(fn %GeneratorTelemetry{network_rx: network_rx} -> network_rx end)
+        |> Enum.sum(),
+      network_tx:
+        telemetries
+        |> Enum.map(fn %GeneratorTelemetry{network_tx: network_tx} -> network_tx end)
+        |> Enum.sum(),
+      active_device_count:
+        telemetries
+        |> Enum.map(fn %GeneratorTelemetry{active_device_count: active_device_count} ->
+          active_device_count
+        end)
+        |> Enum.sum()
     }
   end
 end

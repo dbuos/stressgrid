@@ -2,10 +2,11 @@ import * as filesize from 'filesize';
 import * as _ from 'lodash';
 import { inject, observer } from 'mobx-react';
 import * as React from 'react';
+import { Sparklines, SparklinesLine, SparklinesSpots } from 'react-sparklines';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 
-import { GeneratorsStore } from './stores/GeneratorsStore'
+import { GridStore } from './stores/GridStore'
 import { ReportsStore } from './stores/ReportsStore'
 import { RunsStore } from './stores/RunsStore'
 import { Ws } from './Ws';
@@ -35,7 +36,7 @@ const defaultJson = JSON.stringify({
 }, null, 2);
 
 interface IAppProps {
-  generatorsStore?: GeneratorsStore;
+  gridStore?: GridStore;
   runsStore?: RunsStore;
   reportsStore?: ReportsStore;
   ws?: Ws;
@@ -46,7 +47,7 @@ interface IAppState {
   advanced: boolean;
 }
 
-@inject('generatorsStore')
+@inject('gridStore')
 @inject('runsStore')
 @inject('reportsStore')
 @inject('ws')
@@ -73,14 +74,14 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   public render() {
-    const { generatorsStore, runsStore, reportsStore } = this.props;
+    const { gridStore, runsStore, reportsStore } = this.props;
     return (
       <div className="fluid-container p-4">
         <div className="row">
           <h2>Stressgrid Management</h2>
         </div>
         <div className="row">
-          <div className="col-4 p-4">
+          <div className="col-6 p-4">
             <h3>Plan</h3>
             <form className="bg-light rounded p-4">
               <div className="form-group form-check">
@@ -112,8 +113,8 @@ class App extends React.Component<IAppProps, IAppState> {
                     <div className="col">
                       <div className="form-group">
                         <label htmlFor="size">Effective number of devices</label>
-                        <input className="form-control" id="size" type="text" value={_.defaultTo(generatorsStore ? generatorsStore.size : NaN, 0)} readOnly={true} />
-                        <small id="passwordHelpBlock" className="form-text text-muted">Multiples of ramp step size: {generatorsStore ? generatorsStore.rampStepSize : NaN}</small>
+                        <input className="form-control" id="size" type="text" value={_.defaultTo(gridStore ? gridStore.size : NaN, 0)} readOnly={true} />
+                        <small id="passwordHelpBlock" className="form-text text-muted">Multiples of ramp step size: {gridStore ? gridStore.rampStepSize : NaN}</small>
                       </div>
                     </div>
                   </div>
@@ -165,7 +166,57 @@ class App extends React.Component<IAppProps, IAppState> {
               </fieldset>
             </form>
           </div>
-          <div className="col-8 p-4">
+          <div className="col-6 p-4">
+            <h3>Grid</h3>
+            {gridStore && <table className="table">
+              <tbody>
+                <tr>
+                  <th scope="row" style={{ width: "50%" }}>Generators</th>
+                  <td style={{ width: "20%" }}>{gridStore.generatorCount}</td>
+                  <td style={{ width: "30%" }} />
+                </tr>
+                <tr>
+                  <th scope="row">Active Devices</th>
+                  <td>{gridStore.activeCount}</td>
+                  <td>
+                    <Sparklines data={_.reverse(_.clone(gridStore.recentActiveCount))} height={20}>
+                      <SparklinesLine style={{ fill: "none" }} />
+                      <SparklinesSpots />
+                    </Sparklines>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Max CPU Utilization</th>
+                  <td>{Math.trunc(gridStore.cpu * 100)} %&nbsp;<FontAwesomeIcon style={{ color: gridStore.cpu > .8 ? "red" : "green" }} icon="cog" spin={_.defaultTo(gridStore.activeCount, 0) > 0} /></td>
+                  <td>
+                    <Sparklines data={_.reverse(_.clone(gridStore.recentCpu))} height={20}>
+                      <SparklinesLine style={{ fill: "none" }} />
+                      <SparklinesSpots />
+                    </Sparklines>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Total Network Receive</th>
+                  <td>{filesize(gridStore.networkRx)}/sec</td>
+                  <td>
+                    <Sparklines data={_.reverse(_.clone(gridStore.recentNetworkRx))} height={20}>
+                      <SparklinesLine style={{ fill: "none" }} />
+                      <SparklinesSpots />
+                    </Sparklines>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Total Network Transmit</th>
+                  <td>{filesize(gridStore.networkTx)}/sec</td>
+                  <td>
+                    <Sparklines data={_.reverse(_.clone(gridStore.recentNetworkTx))} height={20}>
+                      <SparklinesLine style={{ fill: "none" }} />
+                      <SparklinesSpots />
+                    </Sparklines>
+                  </td>
+                </tr>
+              </tbody>
+            </table>}
             <h3>Runs</h3>
             {runsStore && <table className="table">
               <thead>
@@ -213,37 +264,6 @@ class App extends React.Component<IAppProps, IAppState> {
                 }))}
               </tbody>
             </table>}
-            <h3>Generators</h3>
-            {generatorsStore && <table className="table">
-              <thead>
-                <tr>
-                  <th scope="col" style={{ width: "30%" }}>Name</th>
-                  <th scope="col" style={{ width: "20%" }}>Devices</th>
-                  <th scope="col" style={{ width: "10%" }}>CPU</th>
-                  <th scope="col" style={{ width: "20%" }}>Receive</th>
-                  <th scope="col" style={{ width: "20%" }}>Transmit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {_.map(generatorsStore.generators, (g, id) => {
-                  const cpu = _.defaultTo(g.cpu, 0);
-                  return <tr key={id}>
-                    <th scope="row"><FontAwesomeIcon style={{ color: cpu > .8 ? "red" : "green" }} icon="cog" spin={_.defaultTo(g.activeCount, 0) > 0} />&nbsp;{id}</th>
-                    <td>{_.defaultTo(g.activeCount, 0)}</td>
-                    <td>{Math.trunc(cpu * 100)} %</td>
-                    <td>{filesize(_.defaultTo(g.networkRx, 0))}/sec</td>
-                    <td>{filesize(_.defaultTo(g.networkTx, 0))}/sec</td>
-                  </tr>
-                })}
-                <tr>
-                  <th scope="row">All</th>
-                  <td>{_.sum(_.map(generatorsStore.generators, g => _.defaultTo(g.activeCount, 0)))}</td>
-                  <td>{_.defaultTo(Math.trunc((_.sum(_.map(generatorsStore.generators, g => _.defaultTo(g.cpu, 0))) / _.size(generatorsStore.generators)) * 100), 0)} %</td>
-                  <td>{filesize(_.sum(_.map(generatorsStore.generators, g => _.defaultTo(g.networkRx, 0))))}/sec</td>
-                  <td>{filesize(_.sum(_.map(generatorsStore.generators, g => _.defaultTo(g.networkTx, 0))))}/sec</td>
-                </tr>
-              </tbody>
-            </table>}
           </div>
         </div>
       </div>
@@ -256,8 +276,8 @@ class App extends React.Component<IAppProps, IAppState> {
 
   private updateDesiredSize = () => {
     const desiredSizeInput = this.desiredSizeInputRef.current;
-    if (desiredSizeInput && this.props.generatorsStore) {
-      this.props.generatorsStore.desiredSize = parseInt(desiredSizeInput.value, 10);
+    if (desiredSizeInput && this.props.gridStore) {
+      this.props.gridStore.desiredSize = parseInt(desiredSizeInput.value, 10);
     }
   }
 
@@ -268,10 +288,10 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   private runPlan = (event: React.SyntheticEvent<HTMLButtonElement>) => {
-    const { generatorsStore, ws } = this.props;
+    const { gridStore, ws } = this.props;
     if (this.state.advanced) {
       const jsonText = this.jsonTextRef.current;
-      if (ws && generatorsStore && jsonText) {
+      if (ws && gridStore && jsonText) {
         this.setState({ error: undefined });
         try {
           ws.run(JSON.parse(jsonText.value));
@@ -291,13 +311,13 @@ class App extends React.Component<IAppProps, IAppState> {
       const sustainSecsInput = this.sustainSecsInputRef.current;
       const rampdownSecsInput = this.rampdownSecsInputRef.current;
 
-      if (ws && generatorsStore && nameInput && hostInput && portInput && scriptText && paramsText && rampupSecsInput && sustainSecsInput && rampdownSecsInput) {
+      if (ws && gridStore && nameInput && hostInput && portInput && scriptText && paramsText && rampupSecsInput && sustainSecsInput && rampdownSecsInput) {
         this.setState({ error: undefined });
         try {
           const name = nameInput.value;
           const port = parseInt(portInput.value, 10);
-          const size = generatorsStore.size;
-          const rampSteps = generatorsStore.rampSteps;
+          const size = gridStore.size;
+          const rampSteps = gridStore.rampSteps;
           const rampdownStepMs = (parseInt(rampdownSecsInput.value, 10) * 1000) / rampSteps;
           const rampupStepMs = (parseInt(rampupSecsInput.value, 10) * 1000) / rampSteps;
           const sustainMs = (parseInt(sustainSecsInput.value, 10) * 1000);

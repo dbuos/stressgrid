@@ -1,17 +1,17 @@
 import * as _ from 'lodash';
 
-import generatorsStore from './stores/GeneratorsStore'
+import gridStore from './stores/GridStore'
 import reportsStore from './stores/ReportsStore'
 import runsStore from './stores/RunsStore'
 
 import ReconnectingWebSocket from 'reconnecting-websocket';
 
-interface IGeneratorInfo {
-  id: string
-  cpu?: number;
-  network_rx?: number;
-  network_tx?: number;
-  active_count?: number;
+interface IGridInfo {
+  recent_cpu?: number[];
+  recent_network_rx?: number[];
+  recent_network_tx?: number[];
+  recent_active_count?: number[];
+  recent_generator_count?: number[];
 }
 
 interface IRunInfo {
@@ -37,13 +37,11 @@ interface IReportInfo {
 
 interface IInit {
   runs: IRunInfo[];
-  generators: IGeneratorInfo[];
   reports: IReportInfo[];
 }
 
 interface INotify {
-  generator_changed?: IGeneratorInfo;
-  generator_removed?: { id: string };
+  grid_changed?: IGridInfo;
   run_changed?: IRunInfo;
   run_removed?: { id: string };
   report_added?: IReportInfo;
@@ -134,21 +132,17 @@ export class Ws {
   private handle(message: IMessage) {
     const { init, notify } = message;
     if (init) {
-      generatorsStore.clear();
+      gridStore.clear();
       runsStore.clear();
       reportsStore.clear();
 
-      _.forEach(init.generators, g => generatorsStore.updateGenerator(g.id, { cpu: g.cpu, networkRx: g.network_rx, networkTx: g.network_tx, activeCount: g.active_count }));
       _.forEach(init.runs, p => runsStore.updateRun(p.id, { name: p.name, state: p.state, remainingMs: p.remaining_ms }));
       _.forEach(init.reports, r => reportsStore.addReport(r.id, { name: r.name, maxCpu: r.max_cpu, maxNetworkRx: r.max_network_rx, maxNetworkTx: r.max_network_tx, csvUrl: r.result.csv_url, cwUrl: r.result.cw_url }));
     }
     if (notify) {
-      if (notify.generator_changed) {
-        const g = notify.generator_changed;
-        generatorsStore.updateGenerator(g.id, { cpu: g.cpu, networkRx: g.network_rx, networkTx: g.network_tx, activeCount: g.active_count });
-      }
-      if (notify.generator_removed) {
-        generatorsStore.deleteGenerator(notify.generator_removed.id);
+      if (notify.grid_changed) {
+        const g = notify.grid_changed;
+        gridStore.updateGenerator(g.recent_cpu, g.recent_network_rx, g.recent_network_tx, g.recent_active_count, g.recent_generator_count);
       }
       if (notify.run_changed) {
         const p = notify.run_changed;

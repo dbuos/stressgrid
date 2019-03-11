@@ -1,7 +1,7 @@
 defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
   @moduledoc false
 
-  alias Stressgrid.Coordinator.{ReportWriter, CloudWatchReportWriter, GeneratorBasics}
+  alias Stressgrid.Coordinator.{ReportWriter, CloudWatchReportWriter, GeneratorTelemetry}
 
   @behaviour ReportWriter
 
@@ -47,10 +47,15 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
     writer
   end
 
-  def write_basics(id, _, %CloudWatchReportWriter{region: region} = writer, basics) do
+  def write_generator_telemetries(
+        id,
+        _,
+        %CloudWatchReportWriter{region: region} = writer,
+        generator_telemetries
+      ) do
     total_active_device_count =
-      basics
-      |> Enum.map(fn {_, %GeneratorBasics{active_device_count: active_device_count}} ->
+      generator_telemetries
+      |> Enum.map(fn {_, %GeneratorTelemetry{active_device_count: active_device_count}} ->
         active_device_count
       end)
       |> Enum.sum()
