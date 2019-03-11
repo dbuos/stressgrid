@@ -167,13 +167,18 @@ class App extends React.Component<IAppProps, IAppState> {
             </form>
           </div>
           <div className="col-6 p-4">
-            <h3>Grid</h3>
+            <h3>Summary</h3>
             {gridStore && <table className="table">
               <tbody>
                 <tr>
                   <th scope="row" style={{ width: "50%" }}>Generators</th>
                   <td style={{ width: "20%" }}>{gridStore.generatorCount}</td>
-                  <td style={{ width: "30%" }} />
+                  <td style={{ width: "30%" }}>
+                    <Sparklines data={_.reverse(_.clone(gridStore.recentGeneratorCount))} height={20}>
+                      <SparklinesLine style={{ fill: "none" }} />
+                      <SparklinesSpots />
+                    </Sparklines>
+                  </td>
                 </tr>
                 <tr>
                   <th scope="row">Active Devices</th>
