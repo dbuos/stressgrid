@@ -50,6 +50,8 @@ Once Stressgrid resources are created, you can explicitly add the `stressgrid-ge
 
 # Running tests
 
+![Stressgrid management website](https://gitlab.com/stressgrid/stressgrid/raw/master/doc/management.gif)
+
 Stressgrid management website is the place to define and run the test plans. The left pane is where the test plan is defined. There are the following settings.
 
 - Plan name describes the combination of plan settings and target system, for example, let's say we are testing photo gallery: 10k-browsing-photos-c5-2xlarge would be for simulation of 10k users browsing photos against c5.2xlarge instance.
