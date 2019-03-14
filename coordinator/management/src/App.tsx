@@ -78,10 +78,7 @@ class App extends React.Component<IAppProps, IAppState> {
     return (
       <div className="fluid-container p-4">
         <div className="row">
-          <h2>Stressgrid Management</h2>
-        </div>
-        <div className="row">
-          <div className="col-6 p-4">
+          <div className="col-6">
             <h3>Plan</h3>
             <form className="bg-light rounded p-4">
               <div className="form-group form-check">
@@ -120,7 +117,7 @@ class App extends React.Component<IAppProps, IAppState> {
                   </div>
                   <div className="form-group">
                     <label htmlFor="script">Script</label>
-                    <textarea className="form-control" id="script" rows={8} ref={this.scriptTextRef} defaultValue={defaultScript} />
+                    <textarea className="form-control" id="script" rows={6} ref={this.scriptTextRef} defaultValue={defaultScript} />
                   </div>
                   <div className="form-group">
                     <label htmlFor="params">Params</label>
@@ -166,7 +163,7 @@ class App extends React.Component<IAppProps, IAppState> {
               </fieldset>
             </form>
           </div>
-          <div className="col-6 p-4">
+          <div className="col-6">
             <h3>Summary</h3>
             {gridStore && <table className="table">
               <tbody>
