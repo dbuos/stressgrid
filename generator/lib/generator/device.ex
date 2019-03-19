@@ -11,6 +11,7 @@ defmodule Stressgrid.Generator.Device do
   defstruct address: nil,
             task_fn: nil,
             task: nil,
+            script_error: nil,
             hists: %{},
             counters: %{},
             last_ts: nil,
@@ -55,14 +56,15 @@ defmodule Stressgrid.Generator.Device do
     if Process.alive?(pid) do
       GenServer.call(pid, {:collect, to_hists})
     else
-      {:ok, false, %{}, %{}}
+      {:ok, nil, false, %{}, %{}}
     end
   end
 
   def handle_call(
         {:collect, to_hists},
         _,
-        %Device{hists: from_hists, counters: counters, task: task} = device
+        %Device{script_error: script_error, hists: from_hists, counters: counters, task: task} =
+          device
       ) do
     hists = add_hists(to_hists, from_hists)
 
@@ -77,7 +79,8 @@ defmodule Stressgrid.Generator.Device do
       |> Enum.map(fn {key, _} -> {key, 0} end)
       |> Map.new()
 
-    {:reply, {:ok, task != nil, hists, counters}, %{device | counters: reset_counters}}
+    {:reply, {:ok, script_error, task != nil, hists, counters},
+     %{device | counters: reset_counters}}
   end
 
   def handle_call({:request, _, _, _, _}, _, %Device{conn_pid: nil} = device) do
@@ -128,7 +131,7 @@ defmodule Stressgrid.Generator.Device do
 
     try do
       {task_fn, _} =
-        "fn ->\r\n#{task_script}\r\nend"
+        "fn -> #{task_script} end"
         |> Code.eval_string([device_pid: device_pid, params: task_params],
           functions: [
             kernel_functions,
@@ -179,7 +182,7 @@ defmodule Stressgrid.Generator.Device do
       :error, error ->
         Logger.error("Script eval failed: #{inspect(error)}")
 
-        {:noreply, device}
+        {:noreply, %{device | script_error: error}}
     end
   end
 
