@@ -1,17 +1,11 @@
 import * as _ from 'lodash';
 import { action, computed, observable } from 'mobx';
 
-export interface IGenerator {
-  cpu?: number;
-  networkRx?: number;
-  networkTx?: number;
-  activeCount?: number;
-}
-
-export class GridStore {
+export class TelemetryStore {
   @observable public recentCpu: number[] = [];
   @observable public recentNetworkRx: number[] = [];
   @observable public recentNetworkTx: number[] = [];
+  @observable public recentScriptError: string | null = null;
   @observable public recentActiveCount: number[] = [];
   @observable public recentGeneratorCount: number[] = [];
   @observable public desiredSize: number = NaN;
@@ -24,12 +18,13 @@ export class GridStore {
     this.recentGeneratorCount = [];
   }
 
-  @action public updateGenerator = (recentCpu?: number[], recentNetworkRx?: number[], recentNetworkTx?: number[], recentActiveCount?: number[], recentGeneratorCount?: number[]) => {
-    this.recentCpu = recentCpu ? recentCpu : [];
-    this.recentNetworkRx = recentNetworkRx ? recentNetworkRx : [];
-    this.recentNetworkTx = recentNetworkTx ? recentNetworkTx : [];
-    this.recentActiveCount = recentActiveCount ? recentActiveCount : [];
-    this.recentGeneratorCount = recentGeneratorCount ? recentGeneratorCount : [];
+  @action public update = (recentCpu: number[], recentNetworkRx: number[], recentNetworkTx: number[], recentScriptError: string | null, recentActiveCount: number[], recentGeneratorCount: number[]) => {
+    this.recentCpu = recentCpu;
+    this.recentNetworkRx = recentNetworkRx;
+    this.recentNetworkTx = recentNetworkTx;
+    this.recentActiveCount = recentActiveCount;
+    this.recentScriptError = recentScriptError;
+    this.recentGeneratorCount = recentGeneratorCount;
   }
 
   @computed get cpu() {
@@ -65,5 +60,5 @@ export class GridStore {
   }
 }
 
-const store = new GridStore();
+const store = new TelemetryStore();
 export default store;

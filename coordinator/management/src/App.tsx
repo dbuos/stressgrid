@@ -6,9 +6,9 @@ import { Sparklines, SparklinesLine, SparklinesSpots } from 'react-sparklines';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 
-import { GridStore } from './stores/GridStore'
 import { ReportsStore } from './stores/ReportsStore'
-import { RunsStore } from './stores/RunsStore'
+import { RunStore } from './stores/RunStore'
+import { TelemetryStore } from './stores/TelemetryStore'
 import { Ws } from './Ws';
 
 const defaultScript = `0..100 |> Enum.each(fn _ ->
@@ -36,8 +36,8 @@ const defaultJson = JSON.stringify({
 }, null, 2);
 
 interface IAppProps {
-  gridStore?: GridStore;
-  runsStore?: RunsStore;
+  telemetryStore?: TelemetryStore;
+  runStore?: RunStore;
   reportsStore?: ReportsStore;
   ws?: Ws;
 }
@@ -47,8 +47,8 @@ interface IAppState {
   advanced: boolean;
 }
 
-@inject('gridStore')
-@inject('runsStore')
+@inject('telemetryStore')
+@inject('runStore')
 @inject('reportsStore')
 @inject('ws')
 @observer
@@ -74,7 +74,7 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   public render() {
-    const { gridStore, runsStore, reportsStore } = this.props;
+    const { telemetryStore, runStore, reportsStore } = this.props;
     return (
       <div className="fluid-container p-4">
         <div className="row">
@@ -85,8 +85,11 @@ class App extends React.Component<IAppProps, IAppState> {
                 <input type="checkbox" className="form-check-input" id="advanced" checked={this.state.advanced} onChange={this.changeAdvanced} />
                 <label className="form-check-label" htmlFor="advanced">Advanced Mode</label>
               </div>
-              {this.state.error && <div className="alert alert-danger" role="alert">
+              {this.state.error && <div className="alert alert-warning" role="alert">
                 {this.state.error}
+              </div>}
+              {telemetryStore && telemetryStore.recentScriptError && <div className="alert alert-danger" role="alert">
+                {telemetryStore.recentScriptError}
               </div>}
               <fieldset>
                 {this.state.advanced && <span>
@@ -110,8 +113,8 @@ class App extends React.Component<IAppProps, IAppState> {
                     <div className="col">
                       <div className="form-group">
                         <label htmlFor="size">Effective number of devices</label>
-                        <input className="form-control" id="size" type="text" value={_.defaultTo(gridStore ? gridStore.size : NaN, 0)} readOnly={true} />
-                        <small id="passwordHelpBlock" className="form-text text-muted">Multiples of ramp step size: {gridStore ? gridStore.rampStepSize : NaN}</small>
+                        <input className="form-control" id="size" type="text" value={_.defaultTo(telemetryStore ? telemetryStore.size : NaN, 0)} readOnly={true} />
+                        <small id="passwordHelpBlock" className="form-text text-muted">Multiples of ramp step size: {telemetryStore ? telemetryStore.rampStepSize : NaN}</small>
                       </div>
                     </div>
                   </div>
@@ -165,13 +168,13 @@ class App extends React.Component<IAppProps, IAppState> {
           </div>
           <div className="col-6">
             <h3>Summary</h3>
-            {gridStore && <table className="table">
+            {telemetryStore && <table className="table">
               <tbody>
                 <tr>
                   <th scope="row" style={{ width: "50%" }}>Generators</th>
-                  <td style={{ width: "20%" }}>{gridStore.generatorCount}</td>
+                  <td style={{ width: "20%" }}>{telemetryStore.generatorCount}</td>
                   <td style={{ width: "30%" }}>
-                    <Sparklines data={_.reverse(_.clone(gridStore.recentGeneratorCount))} height={20}>
+                    <Sparklines data={_.reverse(_.clone(telemetryStore.recentGeneratorCount))} height={20}>
                       <SparklinesLine style={{ fill: "none" }} />
                       <SparklinesSpots />
                     </Sparklines>
@@ -179,9 +182,9 @@ class App extends React.Component<IAppProps, IAppState> {
                 </tr>
                 <tr>
                   <th scope="row">Active Devices</th>
-                  <td>{gridStore.activeCount}</td>
+                  <td>{telemetryStore.activeCount}</td>
                   <td>
-                    <Sparklines data={_.reverse(_.clone(gridStore.recentActiveCount))} height={20}>
+                    <Sparklines data={_.reverse(_.clone(telemetryStore.recentActiveCount))} height={20}>
                       <SparklinesLine style={{ fill: "none" }} />
                       <SparklinesSpots />
                     </Sparklines>
@@ -189,9 +192,9 @@ class App extends React.Component<IAppProps, IAppState> {
                 </tr>
                 <tr>
                   <th scope="row">Max CPU Utilization</th>
-                  <td>{Math.trunc(gridStore.cpu * 100)} %&nbsp;<FontAwesomeIcon style={{ color: gridStore.cpu > .8 ? "red" : "green" }} icon="cog" spin={_.defaultTo(gridStore.activeCount, 0) > 0} /></td>
+                  <td>{Math.trunc(telemetryStore.cpu * 100)} %&nbsp;<FontAwesomeIcon style={{ color: telemetryStore.cpu > .8 ? "red" : "green" }} icon="cog" spin={_.defaultTo(telemetryStore.activeCount, 0) > 0} /></td>
                   <td>
-                    <Sparklines data={_.reverse(_.clone(gridStore.recentCpu))} height={20}>
+                    <Sparklines data={_.reverse(_.clone(telemetryStore.recentCpu))} height={20}>
                       <SparklinesLine style={{ fill: "none" }} />
                       <SparklinesSpots />
                     </Sparklines>
@@ -199,9 +202,9 @@ class App extends React.Component<IAppProps, IAppState> {
                 </tr>
                 <tr>
                   <th scope="row">Total Network Receive</th>
-                  <td>{filesize(gridStore.networkRx)}/sec</td>
+                  <td>{filesize(telemetryStore.networkRx)}/sec</td>
                   <td>
-                    <Sparklines data={_.reverse(_.clone(gridStore.recentNetworkRx))} height={20}>
+                    <Sparklines data={_.reverse(_.clone(telemetryStore.recentNetworkRx))} height={20}>
                       <SparklinesLine style={{ fill: "none" }} />
                       <SparklinesSpots />
                     </Sparklines>
@@ -209,9 +212,9 @@ class App extends React.Component<IAppProps, IAppState> {
                 </tr>
                 <tr>
                   <th scope="row">Total Network Transmit</th>
-                  <td>{filesize(gridStore.networkTx)}/sec</td>
+                  <td>{filesize(telemetryStore.networkTx)}/sec</td>
                   <td>
-                    <Sparklines data={_.reverse(_.clone(gridStore.recentNetworkTx))} height={20}>
+                    <Sparklines data={_.reverse(_.clone(telemetryStore.recentNetworkTx))} height={20}>
                       <SparklinesLine style={{ fill: "none" }} />
                       <SparklinesSpots />
                     </Sparklines>
@@ -220,7 +223,7 @@ class App extends React.Component<IAppProps, IAppState> {
               </tbody>
             </table>}
             <h3>Runs</h3>
-            {runsStore && <table className="table">
+            {runStore && <table className="table">
               <thead>
                 <tr>
                   <th scope="col" style={{ width: "30%" }}>ID</th>
@@ -231,15 +234,15 @@ class App extends React.Component<IAppProps, IAppState> {
                 </tr>
               </thead>
               <tbody>
-                {_.map(runsStore.runs, (run, id) => (
-                  <tr key={id}>
-                    <td><FontAwesomeIcon icon="spinner" spin={true} />&nbsp;{id}</td>
-                    <td>{run.name}</td>
-                    <td>{_.defaultTo(run.state, '???')}</td>
-                    <td>{_.defaultTo(run.remainingMs, 0) / 1000} seconds</td>
-                    <td><button data-id={id} className='btn btn-danger btn-sm' onClick={this.abortRun}>Abort</button></td>
+                {runStore.id &&
+                  <tr key={runStore.id}>
+                    <td><FontAwesomeIcon icon="spinner" spin={true} />&nbsp;{runStore.id}</td>
+                    <td>{runStore.name}</td>
+                    <td>{runStore.state}</td>
+                    <td>{Math.trunc(_.defaultTo(runStore.remainingMs, 0) / 1000)} seconds</td>
+                    <td><button className='btn btn-danger btn-sm' onClick={this.abortRun}>Abort</button></td>
                   </tr>
-                ))}
+                }
               </tbody>
             </table>}
             <h3>Reports</h3>
@@ -254,11 +257,10 @@ class App extends React.Component<IAppProps, IAppState> {
               </thead>
               <tbody>
                 {_.reverse(_.map(reportsStore.reports, (report, id) => {
-                  const maxCpu = _.defaultTo(report.maxCpu, 0);
                   return <tr key={id}>
-                    <td><FontAwesomeIcon style={{ color: maxCpu > .8 ? "red" : "green" }} icon="flag" />&nbsp;{id}</td>
+                    <td><FontAwesomeIcon style={{ color: (report.maxCpu > .8 || report.hasScriptErrors) ? "red" : "green" }} icon="flag" />&nbsp;{id}</td>
                     <td>{report.name}</td>
-                    <td>{Math.trunc(maxCpu * 100)} %</td>
+                    <td>{Math.trunc(report.maxCpu * 100)} %</td>
                     <td>{report.csvUrl ? <a href={report.csvUrl} className='btn btn-outline-info btn-sm mr-1' target='_blank'>CSV</a> : null}
                       {report.cwUrl ? <a href={report.cwUrl} className='btn btn-outline-info btn-sm mr-1' target='_blank'>CloudWatch</a> : null}
                       <button data-id={id} className='btn btn-outline-danger btn-sm mr-1' onClick={this.removeReport}>Clear</button></td>
@@ -278,8 +280,8 @@ class App extends React.Component<IAppProps, IAppState> {
 
   private updateDesiredSize = () => {
     const desiredSizeInput = this.desiredSizeInputRef.current;
-    if (desiredSizeInput && this.props.gridStore) {
-      this.props.gridStore.desiredSize = parseInt(desiredSizeInput.value, 10);
+    if (desiredSizeInput && this.props.telemetryStore) {
+      this.props.telemetryStore.desiredSize = parseInt(desiredSizeInput.value, 10);
     }
   }
 
@@ -290,10 +292,10 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   private runPlan = (event: React.SyntheticEvent<HTMLButtonElement>) => {
-    const { gridStore, ws } = this.props;
+    const { telemetryStore, ws } = this.props;
     if (this.state.advanced) {
       const jsonText = this.jsonTextRef.current;
-      if (ws && gridStore && jsonText) {
+      if (ws && telemetryStore && jsonText) {
         this.setState({ error: undefined });
         try {
           ws.run(JSON.parse(jsonText.value));
@@ -313,13 +315,13 @@ class App extends React.Component<IAppProps, IAppState> {
       const sustainSecsInput = this.sustainSecsInputRef.current;
       const rampdownSecsInput = this.rampdownSecsInputRef.current;
 
-      if (ws && gridStore && nameInput && hostInput && portInput && scriptText && paramsText && rampupSecsInput && sustainSecsInput && rampdownSecsInput) {
+      if (ws && telemetryStore && nameInput && hostInput && portInput && scriptText && paramsText && rampupSecsInput && sustainSecsInput && rampdownSecsInput) {
         this.setState({ error: undefined });
         try {
           const name = nameInput.value;
           const port = parseInt(portInput.value, 10);
-          const size = gridStore.size;
-          const rampSteps = gridStore.rampSteps;
+          const size = telemetryStore.size;
+          const rampSteps = telemetryStore.rampSteps;
           const rampdownStepMs = (parseInt(rampdownSecsInput.value, 10) * 1000) / rampSteps;
           const rampupStepMs = (parseInt(rampupSecsInput.value, 10) * 1000) / rampSteps;
           const sustainMs = (parseInt(sustainSecsInput.value, 10) * 1000);
@@ -361,9 +363,8 @@ class App extends React.Component<IAppProps, IAppState> {
 
   private abortRun = (event: React.SyntheticEvent<HTMLButtonElement>) => {
     const { ws } = this.props;
-    const id = event.currentTarget.dataset.id
-    if (ws && id) {
-      ws.abortRun(id);
+    if (ws) {
+      ws.abortRun();
     }
   }
 

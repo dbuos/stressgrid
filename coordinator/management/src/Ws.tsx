@@ -1,50 +1,61 @@
 import * as _ from 'lodash';
 
-import gridStore from './stores/GridStore'
-import reportsStore from './stores/ReportsStore'
-import runsStore from './stores/RunsStore'
+import reportsStore from './stores/ReportsStore';
+import runStore from './stores/RunStore';
+import telemetryStore from './stores/TelemetryStore';
 
 import ReconnectingWebSocket from 'reconnecting-websocket';
 
-interface IGridInfo {
-  recent_cpu?: number[];
-  recent_network_rx?: number[];
-  recent_network_tx?: number[];
-  recent_active_count?: number[];
-  recent_generator_count?: number[];
+interface IScriptError {
+  description: string;
+  line: number;
 }
 
-interface IRunInfo {
+interface ITelemetry {
+  cpu: number[];
+  network_rx: number[];
+  network_tx: number[];
+  active_count: number[];
+  script_error?: IScriptError;
+  generator_count: number[];
+}
+
+interface IRun {
   id: string;
-  name?: string;
-  state?: string;
-  remaining_ms?: number;
+  name: string;
+  state: string;
+  remaining_ms: number;
 }
 
-interface IResultInfo {
+interface IResult {
   csv_url?: string;
   cw_url?: string;
 }
 
-interface IReportInfo {
+interface IReport {
   id: string;
   name: string;
-  max_cpu?: number;
-  max_network_rx?: number;
-  max_network_tx?: number;
-  result: IResultInfo;
+  max_cpu: number;
+  max_network_rx: number;
+  max_network_tx: number;
+  max_script_error?: IScriptError;
+  max_generator_count: number;
+  result: IResult;
 }
 
 interface IInit {
-  runs: IRunInfo[];
-  reports: IReportInfo[];
+  reports: IReport[];
+  grid: IGrid;
+}
+
+interface IGrid {
+  telemetry: ITelemetry;
+  run: IRun | null;
 }
 
 interface INotify {
-  grid_changed?: IGridInfo;
-  run_changed?: IRunInfo;
-  run_removed?: { id: string };
-  report_added?: IReportInfo;
+  grid_changed?: IGrid;
+  report_added?: IReport;
   report_removed?: { id: string };
 }
 
@@ -75,10 +86,6 @@ interface IRunPlan {
   script?: string;
 }
 
-interface IAbortRun {
-  id: string;
-}
-
 interface IRemoveReport {
   id: string;
 }
@@ -87,7 +94,6 @@ interface IMessage {
   init?: IInit;
   notify?: INotify;
   run_plan?: IRunPlan;
-  abort_run?: IAbortRun;
   remove_report?: IRemoveReport;
 }
 
@@ -109,12 +115,8 @@ export class Ws {
     }]);
   }
 
-  public abortRun(id: string) {
-    this.send([{
-      abort_run: {
-        id
-      }
-    }]);
+  public abortRun() {
+    this.send(["abort_run"]);
   }
 
   public removeReport(id: string) {
@@ -125,35 +127,62 @@ export class Ws {
     }]);
   }
 
-  private send(messages: IMessage[]) {
+  private send(messages: Array<IMessage | string>) {
     this.ws.send(JSON.stringify(messages));
+  }
+
+  private updateGrid(g: IGrid) {
+    const t = g.telemetry;
+    telemetryStore.update(
+      t.cpu,
+      t.network_rx,
+      t.network_tx,
+      t.script_error ? t.script_error.description : null,
+      t.active_count,
+      t.generator_count);
+    if (g.run) {
+      const r = g.run;
+      runStore.update(
+        r.id,
+        r.name,
+        r.state,
+        r.remaining_ms
+      );
+    }
+    else {
+      runStore.clear();
+    }
+  }
+
+  private addReport(r: IReport) {
+    reportsStore.addReport(r.id,
+      {
+        csvUrl: r.result.csv_url,
+        cwUrl: r.result.cw_url,
+        hasScriptErrors: !!r.max_script_error,
+        maxCpu: r.max_cpu,
+        maxNetworkRx: r.max_network_rx,
+        maxNetworkTx: r.max_network_tx,
+        name: r.name
+      });
   }
 
   private handle(message: IMessage) {
     const { init, notify } = message;
     if (init) {
-      gridStore.clear();
-      runsStore.clear();
+      telemetryStore.clear();
+      runStore.clear();
       reportsStore.clear();
 
-      _.forEach(init.runs, p => runsStore.updateRun(p.id, { name: p.name, state: p.state, remainingMs: p.remaining_ms }));
-      _.forEach(init.reports, r => reportsStore.addReport(r.id, { name: r.name, maxCpu: r.max_cpu, maxNetworkRx: r.max_network_rx, maxNetworkTx: r.max_network_tx, csvUrl: r.result.csv_url, cwUrl: r.result.cw_url }));
+      this.updateGrid(init.grid);
+      _.forEach(init.reports, r => this.addReport(r));
     }
     if (notify) {
       if (notify.grid_changed) {
-        const g = notify.grid_changed;
-        gridStore.updateGenerator(g.recent_cpu, g.recent_network_rx, g.recent_network_tx, g.recent_active_count, g.recent_generator_count);
-      }
-      if (notify.run_changed) {
-        const p = notify.run_changed;
-        runsStore.updateRun(p.id, { name: p.name, state: p.state, remainingMs: p.remaining_ms });
-      }
-      if (notify.run_removed) {
-        runsStore.deleteRun(notify.run_removed.id);
+        this.updateGrid(notify.grid_changed);
       }
       if (notify.report_added) {
-        const r = notify.report_added;
-        reportsStore.addReport(r.id, { name: r.name, maxCpu: r.max_cpu, maxNetworkRx: r.max_network_rx, maxNetworkTx: r.max_network_tx, csvUrl: r.result.csv_url, cwUrl: r.result.cw_url });
+        this.addReport(notify.report_added);
       }
       if (notify.report_removed) {
         reportsStore.deleteReport(notify.report_removed.id);

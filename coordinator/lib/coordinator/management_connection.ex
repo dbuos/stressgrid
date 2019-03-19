@@ -11,28 +11,32 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
 
   require Logger
 
-  defstruct []
+  @tick_interval 1_000
+
+  defstruct tick_timer_ref: nil
 
   def init(req, _) do
     {:cowboy_websocket, req, %ManagementConnection{}, %{idle_timeout: :infinity}}
   end
 
   def websocket_init(%{} = connection) do
-    {:ok, runs} = Scheduler.get_runs_json()
-    {:ok, reports} = Reporter.get_reports_json()
+    tick_timer_ref = Process.send_after(self(), :tick, @tick_interval)
+
+    {:ok, reports_json} = Reporter.get_reports_json()
+    {:ok, grid_json} = get_grid_json()
 
     :ok =
       send_json(self(), [
         %{
           "init" => %{
-            "runs" => runs,
-            "reports" => reports
+            "reports" => reports_json,
+            "grid" => grid_json
           }
         }
       ])
 
     Registry.register(ManagementConnection, nil, nil)
-    {:ok, connection}
+    {:ok, %{connection | tick_timer_ref: tick_timer_ref}}
   end
 
   def websocket_handle({:text, text}, connection) do
@@ -52,21 +56,14 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
     {:reply, {:text, text}, connection}
   end
 
+  def websocket_info(:tick, connection) do
+    {:ok, connection |> notify_grid_changed()}
+  end
+
   def notify(json) do
     Registry.lookup(ManagementConnection, nil)
     |> Enum.each(fn {pid, nil} ->
       send_json(pid, [%{"notify" => json}])
-    end)
-  end
-
-  def notify_many([]) do
-    :ok
-  end
-
-  def notify_many(jsons) do
-    Registry.lookup(ManagementConnection, nil)
-    |> Enum.each(fn {pid, nil} ->
-      send_json(pid, jsons |> Enum.map(fn json -> %{"notify" => json} end))
     end)
   end
 
@@ -80,25 +77,14 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
          %{
            "run_plan" =>
              %{
-               "name" => name,
+               "name" => plan_name,
                "blocks" => blocks_json,
                "addresses" => addresses_json,
                "opts" => opts_json
              } = plan
          }
        )
-       when is_binary(name) and is_list(blocks_json) and is_list(addresses_json) do
-    safe_name =
-      name
-      |> String.replace(~r/[^a-zA-Z0-9]+/, "-")
-      |> String.trim("-")
-
-    now =
-      DateTime.utc_now()
-      |> DateTime.to_iso8601(:basic)
-      |> String.replace(~r/[TZ\.]/, "")
-
-    id = "#{safe_name}-#{now}"
+       when is_binary(plan_name) and is_list(blocks_json) and is_list(addresses_json) do
     script = plan |> Map.get("script")
     opts = parse_opts_json(opts_json)
 
@@ -132,21 +118,18 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
       end)
       |> Enum.reverse()
 
-    :ok = Scheduler.start_run(id, name, blocks, addresses, opts)
-    connection
+    :ok = Scheduler.start_run(plan_name, blocks, addresses, opts)
+
+    connection |> notify_grid_changed()
   end
 
   defp receive_json(
          %ManagementConnection{} = connection,
-         %{
-           "abort_run" => %{
-             "id" => id
-           }
-         }
-       )
-       when is_binary(id) do
-    :ok = Scheduler.abort_run(id)
-    connection
+         "abort_run"
+       ) do
+    :ok = Scheduler.abort_run()
+
+    connection |> notify_grid_changed()
   end
 
   defp receive_json(
@@ -218,5 +201,38 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
       _, acc ->
         acc
     end)
+  end
+
+  defp notify_grid_changed(%ManagementConnection{tick_timer_ref: tick_timer_ref} = connection) do
+    Process.cancel_timer(tick_timer_ref)
+    tick_timer_ref = Process.send_after(self(), :tick, @tick_interval)
+
+    {:ok, grid_json} = get_grid_json()
+
+    :ok =
+      notify(%{
+        "grid_changed" => grid_json
+      })
+
+    %{connection | tick_timer_ref: tick_timer_ref}
+  end
+
+  defp get_grid_json do
+    {:ok, telemetry_json} = Reporter.get_telemetry_json()
+
+    run_json =
+      case Scheduler.get_run_json() do
+        {:ok, run_json} ->
+          run_json
+
+        :no_run ->
+          nil
+      end
+
+    {:ok,
+     %{
+       "telemetry" => telemetry_json,
+       "run" => run_json
+     }}
   end
 end
