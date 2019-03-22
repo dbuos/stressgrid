@@ -8,7 +8,8 @@ defmodule Stressgrid.Coordinator.Reporter do
             aggregated_telemetries: [],
             aggregated_generator_counts: [],
             run: nil,
-            reports: %{}
+            reports: %{},
+            last_script_error: nil
 
   @report_interval 60_000
   @aggregate_interval 1_000
@@ -27,7 +28,8 @@ defmodule Stressgrid.Coordinator.Reporter do
   end
 
   defmodule Report do
-    defstruct plan_name: nil,
+    defstruct last_script_error: nil,
+              plan_name: nil,
               max_telemetry: nil,
               result_json: %{}
   end
@@ -88,13 +90,15 @@ defmodule Stressgrid.Coordinator.Reporter do
         _,
         %Reporter{
           aggregated_generator_counts: aggregated_generator_counts,
-          aggregated_telemetries: aggregated_telemetries
+          aggregated_telemetries: aggregated_telemetries,
+          last_script_error: last_script_error
         } = reporter
       ) do
     telemetry_json =
       %{
         "generator_count" => aggregated_generator_counts
       }
+      |> add_last_script_error(last_script_error)
       |> Map.merge(aggregated_telemetries |> GeneratorTelemetry.to_json())
 
     {:reply, {:ok, telemetry_json}, reporter}
@@ -104,10 +108,12 @@ defmodule Stressgrid.Coordinator.Reporter do
         {:push_telemetry, generator_id, telemetry},
         %Reporter{
           generator_telemetries: generator_telemetries,
-          run: run
+          run: run,
+          last_script_error: last_script_error
         } = reporter
       ) do
-    %{counters: push_counters, hists: push_hists} = telemetry
+    %{counters: push_counters, hists: push_hists, first_script_error: first_script_error} =
+      telemetry
 
     generator_telemetries =
       generator_telemetries
@@ -156,7 +162,9 @@ defmodule Stressgrid.Coordinator.Reporter do
      %{
        reporter
        | generator_telemetries: generator_telemetries,
-         run: run
+         run: run,
+         last_script_error:
+           if(first_script_error != nil, do: first_script_error, else: last_script_error)
      }}
   end
 
@@ -172,12 +180,22 @@ defmodule Stressgrid.Coordinator.Reporter do
 
     send(self(), :report)
 
-    {:noreply, %{reporter | run: %Run{id: id, plan_name: plan_name, writers: writers}}}
+    {:noreply,
+     %{
+       reporter
+       | last_script_error: nil,
+         run: %Run{id: id, plan_name: plan_name, writers: writers}
+     }}
   end
 
   def handle_cast(
         :stop_run,
-        %Reporter{run: run, reports: reports, writer_configs: writer_configs} = reporter
+        %Reporter{
+          run: run,
+          reports: reports,
+          writer_configs: writer_configs,
+          last_script_error: last_script_error
+        } = reporter
       ) do
     case run do
       %Run{
@@ -195,6 +213,7 @@ defmodule Stressgrid.Coordinator.Reporter do
 
         report = %Report{
           plan_name: plan_name,
+          last_script_error: last_script_error,
           max_telemetry: max_telemetry,
           result_json: result_json
         }
@@ -367,14 +386,12 @@ defmodule Stressgrid.Coordinator.Reporter do
            cpu: cpu0,
            network_rx: network_rx0,
            network_tx: network_tx0,
-           first_script_error: first_script_error0,
            active_device_count: active_device_count0
          },
          %GeneratorTelemetry{
            cpu: cpu1,
            network_rx: network_rx1,
            network_tx: network_tx1,
-           first_script_error: first_script_error1,
            active_device_count: active_device_count1
          }
        ) do
@@ -382,8 +399,6 @@ defmodule Stressgrid.Coordinator.Reporter do
       cpu: max(cpu0, cpu1),
       network_rx: max(network_rx0, network_rx1),
       network_tx: max(network_tx0, network_tx1),
-      first_script_error:
-        Enum.find([first_script_error0, first_script_error1], fn error -> error !== nil end),
       active_device_count: max(active_device_count0, active_device_count1)
     }
   end
@@ -405,12 +420,6 @@ defmodule Stressgrid.Coordinator.Reporter do
         telemetries
         |> Enum.map(fn %GeneratorTelemetry{network_tx: network_tx} -> network_tx end)
         |> Enum.sum(),
-      first_script_error:
-        telemetries
-        |> Enum.map(fn %GeneratorTelemetry{first_script_error: first_script_error} ->
-          first_script_error
-        end)
-        |> Enum.find(fn error -> error !== nil end),
       active_device_count:
         telemetries
         |> Enum.map(fn %GeneratorTelemetry{active_device_count: active_device_count} ->
@@ -421,6 +430,7 @@ defmodule Stressgrid.Coordinator.Reporter do
   end
 
   defp report_to_json(id, %Report{
+         last_script_error: last_script_error,
          plan_name: plan_name,
          result_json: result_json,
          max_telemetry: max_telemetry
@@ -430,6 +440,50 @@ defmodule Stressgrid.Coordinator.Reporter do
       "name" => plan_name,
       "result" => result_json
     }
+    |> add_last_script_error(last_script_error)
     |> Map.merge(max_telemetry |> GeneratorTelemetry.to_json("max_"))
+  end
+
+  defp add_last_script_error(json, nil) do
+    json
+  end
+
+  defp add_last_script_error(json, %{
+         script: script,
+         error: %SyntaxError{description: description, line: line}
+       }) do
+    json
+    |> Map.put("last_script_error", %{
+      "script" => script,
+      "description" => description,
+      "line" => line
+    })
+  end
+
+  defp add_last_script_error(json, %{
+         script: script,
+         error: %CompileError{description: description, line: line}
+       }) do
+    json
+    |> Map.put("last_script_error", %{
+      "script" => script,
+      "description" => description,
+      "line" => line
+    })
+  end
+
+  defp add_last_script_error(json, %{
+         script: script,
+         error: %TokenMissingError{
+           description: description,
+           line: line
+         }
+       }) do
+    json
+    |> Map.put("last_script_error", %{
+      "script" => script,
+      "description" => description,
+      "line" => line
+    })
   end
 end

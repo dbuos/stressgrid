@@ -16,7 +16,7 @@ interface ITelemetry {
   network_rx: number[];
   network_tx: number[];
   active_count: number[];
-  script_error?: IScriptError;
+  last_script_error?: IScriptError;
   generator_count: number[];
 }
 
@@ -35,10 +35,10 @@ interface IResult {
 interface IReport {
   id: string;
   name: string;
+  last_script_error?: IScriptError;
   max_cpu: number;
   max_network_rx: number;
   max_network_tx: number;
-  max_script_error?: IScriptError;
   max_generator_count: number;
   result: IResult;
 }
@@ -137,7 +137,7 @@ export class Ws {
       t.cpu,
       t.network_rx,
       t.network_tx,
-      t.script_error ? t.script_error.description : null,
+      t.last_script_error ? t.last_script_error.description : null,
       t.active_count,
       t.generator_count);
     if (g.run) {
@@ -159,7 +159,7 @@ export class Ws {
       {
         csvUrl: r.result.csv_url,
         cwUrl: r.result.cw_url,
-        hasScriptErrors: !!r.max_script_error,
+        hasScriptErrors: !!r.last_script_error,
         maxCpu: r.max_cpu,
         maxNetworkRx: r.max_network_rx,
         maxNetworkTx: r.max_network_tx,

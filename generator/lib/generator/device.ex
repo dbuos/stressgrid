@@ -180,9 +180,7 @@ defmodule Stressgrid.Generator.Device do
        }}
     catch
       :error, error ->
-        Logger.error("Script eval failed: #{inspect(error)}")
-
-        {:noreply, %{device | script_error: error}}
+        {:noreply, %{device | script_error: %{error: error, script: task_script}}}
     end
   end
 
