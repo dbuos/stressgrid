@@ -8,7 +8,7 @@ export class TelemetryStore {
   @observable public recentScriptError: string | null = null;
   @observable public recentActiveCount: number[] = [];
   @observable public recentGeneratorCount: number[] = [];
-  @observable public desiredSize: number = NaN;
+  @observable public desiredSize: number = 10000;
 
   @action public clear = () => {
     this.recentCpu = [];
