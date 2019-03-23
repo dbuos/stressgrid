@@ -172,8 +172,8 @@ class App extends React.Component<IAppProps, IAppState> {
           </form></span>}
         {telemetryStore && runStore && !this.state.planModal && <span>
           <h3>Stressgrid</h3>
-          {telemetryStore.recentScriptError && <div className="alert alert-danger" role="alert">
-            {telemetryStore.recentScriptError}
+          {telemetryStore.lastScriptError && <div className="alert alert-danger" role="alert">
+            {telemetryStore.lastScriptError}
           </div>}
           <table className="table">
             <tbody>
@@ -220,6 +220,16 @@ class App extends React.Component<IAppProps, IAppState> {
                 <td>{telemetryStore.activeCount}</td>
                 <td>
                   <Sparklines data={_.reverse(_.clone(telemetryStore.recentActiveCount))} height={20}>
+                    <SparklinesLine style={{ fill: "none" }} />
+                    <SparklinesSpots />
+                  </Sparklines>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Total Error Count</th>
+                <td>{telemetryStore.errorCount}</td>
+                <td>
+                  <Sparklines data={_.reverse(_.clone(telemetryStore.recentErrorCount))} height={20}>
                     <SparklinesLine style={{ fill: "none" }} />
                     <SparklinesSpots />
                   </Sparklines>

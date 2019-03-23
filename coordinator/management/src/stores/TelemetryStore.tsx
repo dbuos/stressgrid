@@ -2,10 +2,11 @@ import * as _ from 'lodash';
 import { action, computed, observable } from 'mobx';
 
 export class TelemetryStore {
+  @observable public lastScriptError: string | null = null;
+  @observable public recentErrorCount: number[] = [];
   @observable public recentCpu: number[] = [];
   @observable public recentNetworkRx: number[] = [];
   @observable public recentNetworkTx: number[] = [];
-  @observable public recentScriptError: string | null = null;
   @observable public recentActiveCount: number[] = [];
   @observable public recentGeneratorCount: number[] = [];
   @observable public desiredSize: number = 10000;
@@ -18,13 +19,18 @@ export class TelemetryStore {
     this.recentGeneratorCount = [];
   }
 
-  @action public update = (recentCpu: number[], recentNetworkRx: number[], recentNetworkTx: number[], recentScriptError: string | null, recentActiveCount: number[], recentGeneratorCount: number[]) => {
+  @action public update = (lastScriptError: string | null, recentErrorCount: number[], recentCpu: number[], recentNetworkRx: number[], recentNetworkTx: number[], recentActiveCount: number[], recentGeneratorCount: number[]) => {
+    this.lastScriptError = lastScriptError;
+    this.recentErrorCount = recentErrorCount;
     this.recentCpu = recentCpu;
     this.recentNetworkRx = recentNetworkRx;
     this.recentNetworkTx = recentNetworkTx;
     this.recentActiveCount = recentActiveCount;
-    this.recentScriptError = recentScriptError;
     this.recentGeneratorCount = recentGeneratorCount;
+  }
+
+  @computed get errorCount() {
+    return _.defaultTo(this.recentErrorCount[0], 0);
   }
 
   @computed get cpu() {

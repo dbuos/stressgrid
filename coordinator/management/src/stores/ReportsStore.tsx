@@ -5,6 +5,7 @@ export interface IReport {
   cwUrl?: string;
   csvUrl?: string;
   hasScriptErrors: boolean;
+  hasNonScriptErrors: boolean;
   maxCpu: number;
   maxNetworkRx: number;
   maxNetworkTx: number;
