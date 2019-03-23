@@ -12,9 +12,9 @@ import App from './App';
 import './index.css';
 // import registerServiceWorker from './registerServiceWorker';
 
-import gridStore from './stores/GridStore'
 import reportsStore from './stores/ReportsStore';
-import runsStore from './stores/RunsStore'
+import runStore from './stores/RunStore';
+import telemetryStore from './stores/TelemetryStore';
 import ws from './Ws';
 
 library.add(faSpinner)
@@ -28,7 +28,7 @@ const wsUrl = location.port === "3000" ?
 ws.connect(wsUrl);
 
 ReactDOM.render(
-  <Provider gridStore={gridStore} runsStore={runsStore} reportsStore={reportsStore} ws={ws}>
+  <Provider telemetryStore={telemetryStore} runStore={runStore} reportsStore={reportsStore} ws={ws}>
     <App />
   </Provider>,
   document.getElementById('root') as HTMLElement

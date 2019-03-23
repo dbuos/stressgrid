@@ -2,12 +2,14 @@ import * as _ from 'lodash';
 import { action, observable } from 'mobx';
 
 export interface IReport {
-  name: string;
-  maxCpu?: number;
-  maxNetworkRx?: number;
-  maxNetworkTx?: number;
   cwUrl?: string;
   csvUrl?: string;
+  hasScriptErrors: boolean;
+  hasNonScriptErrors: boolean;
+  maxCpu: number;
+  maxNetworkRx: number;
+  maxNetworkTx: number;
+  name: string;
 }
 
 export class ReportsStore {

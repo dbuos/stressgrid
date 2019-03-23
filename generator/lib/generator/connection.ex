@@ -132,13 +132,14 @@ defmodule Stressgrid.Generator.Connection do
   def handle_info(:report, %Connection{} = connection) do
     Process.send_after(self(), :report, @report_interval)
 
-    {aggregate_hists, aggregate_counters, active_device_count} =
+    {first_script_error, active_device_count, aggregate_hists, aggregate_counters} =
       Supervisor.which_children(Cohort.Supervisor)
-      |> Enum.reduce({%{}, %{}, 0}, fn {_, cohort_pid, _, _}, a ->
+      |> Enum.reduce({nil, 0, %{}, %{}}, fn {_, cohort_pid, _, _}, a ->
         Supervisor.which_children(cohort_pid)
         |> Enum.reduce(a, fn {_, device_pid, _, _},
-                             {aggregate_hists, aggregate_counters, active_device_count} ->
-          {:ok, is_active, aggregate_hists, device_counters} =
+                             {first_script_error, active_device_count, aggregate_hists,
+                              aggregate_counters} ->
+          {:ok, script_error, is_active, aggregate_hists, device_counters} =
             Device.collect(device_pid, aggregate_hists)
 
           aggregate_counters =
@@ -148,8 +149,9 @@ defmodule Stressgrid.Generator.Connection do
               |> Map.update(key, value, fn c -> c + value end)
             end)
 
-          {aggregate_hists, aggregate_counters,
-           active_device_count + if(is_active, do: 1, else: 0)}
+          {if(first_script_error !== nil, do: first_script_error, else: script_error),
+           active_device_count + if(is_active, do: 1, else: 0), aggregate_hists,
+           aggregate_counters}
         end)
       end)
 
@@ -165,6 +167,7 @@ defmodule Stressgrid.Generator.Connection do
       cpu: cpu,
       network_rx: network_rx,
       network_tx: network_tx,
+      first_script_error: first_script_error,
       active_device_count: active_device_count,
       counters: aggregate_counters,
       hists:
