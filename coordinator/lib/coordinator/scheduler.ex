@@ -126,7 +126,7 @@ defmodule Stressgrid.Coordinator.Scheduler do
     ts = ts + sustain_ms
 
     timer_refs = [
-      schedule_state_change(ts, :rampdown, ramp_steps * rampdown_step_ms + @cooldown_ms)
+      schedule_state_change(ts, :rampdown, ramp_steps * rampdown_step_ms)
       | timer_refs
     ]
 
@@ -136,7 +136,10 @@ defmodule Stressgrid.Coordinator.Scheduler do
         {ts + rampdown_step_ms, [schedule_op(ts, {:stop_cohort, "#{id}-#{i - 1}"}) | timer_refs]}
       end)
 
-    timer_refs = [schedule_op(ts + @cooldown_ms, :stop) | timer_refs]
+    timer_refs = [schedule_state_change(ts, :cooldown, @cooldown_ms) | timer_refs]
+    ts = ts + @cooldown_ms
+
+    timer_refs = [schedule_op(ts, :stop) | timer_refs]
 
     %Run{id: id, plan_name: plan_name, timer_refs: timer_refs, state: :init}
   end
