@@ -98,27 +98,12 @@ defmodule Stressgrid.Coordinator.CsvReportWriter do
       |> Enum.sum()
 
     row =
-      generator_telemetries
-      |> Enum.map(fn {generator,
-                      %GeneratorTelemetry{
-                        cpu: cpu,
-                        network_rx: network_rx,
-                        network_tx: network_tx,
-                        active_device_count: active_device_count
-                      }} ->
-        [
-          {:"#{generator}_cpu", cpu},
-          {:"#{generator}_network_rx", network_rx},
-          {:"#{generator}_network_tx", network_tx},
-          {:"#{generator}_active_device_count", active_device_count}
-        ]
-      end)
-      |> Enum.concat()
-      |> Map.new()
-      |> Map.put(:average_cpu, average_cpu)
-      |> Map.put(:total_network_rx, total_network_rx)
-      |> Map.put(:total_network_tx, total_network_tx)
-      |> Map.put(:total_active_device_count, total_active_device_count)
+      %{
+        average_cpu: average_cpu,
+        total_network_rx: total_network_rx,
+        total_network_tx: total_network_tx,
+        total_active_device_count: total_active_device_count
+      }
       |> Map.merge(table |> Map.get(clock, %{}))
 
     %{writer | table: table |> Map.put(clock, row)}
