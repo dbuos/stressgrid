@@ -18,6 +18,7 @@ interface ITelemetry {
   active_count: number[];
   error_count: number[];
   last_script_error?: IScriptError;
+  last_error_types?: string[];
   generator_count: number[];
 }
 
@@ -137,6 +138,7 @@ export class Ws {
     const t = g.telemetry;
     telemetryStore.update(
       t.last_script_error ? t.last_script_error.description : null,
+      t.last_error_types ? _.join(t.last_error_types, ", ") : null,
       t.error_count,
       t.cpu,
       t.network_rx,

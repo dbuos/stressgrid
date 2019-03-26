@@ -172,9 +172,6 @@ class App extends React.Component<IAppProps, IAppState> {
           </form></span>}
         {telemetryStore && runStore && !this.state.planModal && <span>
           <h3>Stressgrid</h3>
-          {telemetryStore.lastScriptError && <div className="alert alert-danger" role="alert">
-            {telemetryStore.lastScriptError}
-          </div>}
           <table className="table">
             <tbody>
               <tr>
@@ -226,8 +223,12 @@ class App extends React.Component<IAppProps, IAppState> {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Total Error Count</th>
-                <td>{telemetryStore.errorCount}</td>
+                <th scope="row">Last Error Count</th>
+                <td>
+                  <span>{telemetryStore.errorCount}</span>
+                  <span>{telemetryStore.lastErrorTypes && <small>&nbsp;({telemetryStore.lastErrorTypes})</small>}</span>&nbsp;
+                  <FontAwesomeIcon style={{ color: telemetryStore.errorCount > 0 ? "red" : "green" }} icon="flag" />
+                </td>
                 <td>
                   <Sparklines data={_.reverse(_.clone(telemetryStore.recentErrorCount))} height={20}>
                     <SparklinesLine style={{ fill: "none" }} />
@@ -237,7 +238,10 @@ class App extends React.Component<IAppProps, IAppState> {
               </tr>
               <tr>
                 <th scope="row">Max CPU Utilization</th>
-                <td>{Math.trunc(telemetryStore.cpu * 100)} %&nbsp;<FontAwesomeIcon style={{ color: telemetryStore.cpu > .8 ? "red" : "green" }} icon="cog" spin={_.defaultTo(telemetryStore.activeCount, 0) > 0} /></td>
+                <td>
+                  <span>{Math.trunc(telemetryStore.cpu * 100)} %</span>&nbsp;
+                  <FontAwesomeIcon style={{ color: telemetryStore.cpu > .8 ? "red" : "green" }} icon="cog" spin={_.defaultTo(telemetryStore.activeCount, 0) > 0} />
+                </td>
                 <td>
                   <Sparklines data={_.reverse(_.clone(telemetryStore.recentCpu))} height={20}>
                     <SparklinesLine style={{ fill: "none" }} />
@@ -265,6 +269,13 @@ class App extends React.Component<IAppProps, IAppState> {
                   </Sparklines>
                 </td>
               </tr>
+              {telemetryStore.lastScriptError && <tr>
+                <th scope="row">Last Script Error</th>
+                <td colSpan={2}>
+                  <small>{telemetryStore.lastScriptError}</small>&nbsp;
+                  <FontAwesomeIcon style={{ color: "red" }} icon="flag" />
+                </td>
+              </tr>}
             </tbody>
           </table>
           <h3>Reports</h3>
@@ -280,7 +291,11 @@ class App extends React.Component<IAppProps, IAppState> {
             <tbody>
               {_.reverse(_.map(reportsStore.reports, (report, id) => {
                 return <tr key={id}>
-                  <td><FontAwesomeIcon style={{ color: (report.maxCpu > .8 || report.hasScriptErrors) ? "red" : "green" }} icon="flag" />&nbsp;{id}</td>
+                  <td>
+                    <FontAwesomeIcon style={{ color: (report.maxCpu > .8) ? "red" : "green" }} icon="cog" />&nbsp;
+                    <FontAwesomeIcon style={{ color: (report.hasNonScriptErrors || report.hasScriptErrors) ? "red" : "green" }} icon="flag" />&nbsp;
+                    <span>{id}</span>
+                  </td>
                   <td>{report.name}</td>
                   <td>{Math.trunc(report.maxCpu * 100)} %</td>
                   <td>{report.csvUrl ? <a href={report.csvUrl} className='btn btn-outline-info btn-sm mr-1' target='_blank'>CSV</a> : null}

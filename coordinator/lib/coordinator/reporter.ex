@@ -8,6 +8,7 @@ defmodule Stressgrid.Coordinator.Reporter do
             generator_telemetries: %{},
             last_script_error: nil,
             last_error_count: 0,
+            last_error_types: [],
             aggregated_telemetries: [],
             aggregated_generator_counts: [],
             aggregated_error_counts: [],
@@ -93,6 +94,7 @@ defmodule Stressgrid.Coordinator.Reporter do
         _,
         %Reporter{
           last_script_error: last_script_error,
+          last_error_types: last_error_types,
           aggregated_generator_counts: aggregated_generator_counts,
           aggregated_telemetries: aggregated_telemetries,
           aggregated_error_counts: aggregated_error_counts
@@ -104,6 +106,7 @@ defmodule Stressgrid.Coordinator.Reporter do
         "error_count" => aggregated_error_counts
       }
       |> add_script_error("last_script_error", last_script_error)
+      |> add_error_types("last_error_types", last_error_types)
       |> Map.merge(aggregated_telemetries |> GeneratorTelemetry.to_json())
 
     {:reply, {:ok, telemetry_json}, reporter}
@@ -115,6 +118,7 @@ defmodule Stressgrid.Coordinator.Reporter do
           generator_telemetries: generator_telemetries,
           run: run,
           last_error_count: last_error_count,
+          last_error_types: last_error_types,
           last_script_error: last_script_error
         } = reporter
       ) do
@@ -130,13 +134,15 @@ defmodule Stressgrid.Coordinator.Reporter do
       |> Map.values()
       |> Enum.reduce(nil, &max_telemetry(&1, &2))
 
-    error_count =
+    {error_count, error_types} =
       push_counters
-      |> Enum.reduce(0, fn {key, value}, error_count ->
-        if ~r/.*error_count$/ |> Regex.match?(key |> Atom.to_string()) do
-          error_count + value
-        else
-          error_count
+      |> Enum.reduce({0, []}, fn {key, value}, {error_count, error_types} ->
+        case ~r/(.*)_error_count$/ |> Regex.run(key |> Atom.to_string()) do
+          [_, type] ->
+            {error_count + value, [type |> String.to_atom() | error_types] |> Enum.uniq()}
+
+          nil ->
+            {error_count, error_types}
         end
       end)
 
@@ -180,6 +186,7 @@ defmodule Stressgrid.Coordinator.Reporter do
        | generator_telemetries: generator_telemetries,
          run: run,
          last_error_count: last_error_count + error_count,
+         last_error_types: last_error_types |> Enum.concat(error_types) |> Enum.uniq(),
          last_script_error:
            if(first_script_error != nil, do: first_script_error, else: last_script_error)
      }}
@@ -202,7 +209,8 @@ defmodule Stressgrid.Coordinator.Reporter do
        reporter
        | run: %Run{id: id, plan_name: plan_name, writers: writers},
          last_script_error: nil,
-         last_error_count: 0
+         last_error_count: 0,
+         last_error_types: []
      }}
   end
 
@@ -514,5 +522,14 @@ defmodule Stressgrid.Coordinator.Reporter do
       "description" => description,
       "line" => line
     })
+  end
+
+  defp add_error_types(json, _, []) do
+    json
+  end
+
+  defp add_error_types(json, name, types) do
+    json
+    |> Map.put(name, types)
   end
 end
