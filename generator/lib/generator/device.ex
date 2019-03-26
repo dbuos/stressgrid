@@ -261,7 +261,7 @@ defmodule Stressgrid.Generator.Device do
     {:noreply,
      device
      |> recycle(@recycle_delay)
-     |> inc_counter(reason |> reason_to_key(), 1)}
+     |> inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
   def handle_info(
@@ -324,7 +324,7 @@ defmodule Stressgrid.Generator.Device do
     {:noreply,
      device
      |> recycle(@recycle_delay)
-     |> inc_counter(reason |> reason_to_key(), 1)}
+     |> inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
   def handle_info(
@@ -338,7 +338,7 @@ defmodule Stressgrid.Generator.Device do
     {:noreply,
      device
      |> recycle(@recycle_delay)
-     |> inc_counter(reason |> reason_to_key(), 1)}
+     |> inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
   def handle_info(
@@ -353,7 +353,7 @@ defmodule Stressgrid.Generator.Device do
     {:noreply,
      device
      |> recycle(@recycle_delay)
-     |> inc_counter(reason |> reason_to_key(), 1)}
+     |> inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
   def handle_info(
@@ -370,7 +370,7 @@ defmodule Stressgrid.Generator.Device do
     {:noreply,
      device
      |> recycle(@recycle_delay)
-     |> inc_counter(:task_error_count, 1)}
+     |> inc_counter(reason |> task_reason_to_key(), 1)}
   end
 
   def handle_info(
@@ -534,32 +534,64 @@ defmodule Stressgrid.Generator.Device do
     }
   end
 
-  defp reason_to_key(error) when is_atom(error) do
-    "#{error}_error_count" |> String.to_atom()
-  end
-
-  defp reason_to_key({:error, error}) when is_atom(error) do
-    "#{error}_error_count" |> String.to_atom()
-  end
-
-  defp reason_to_key({:shutdown, error}) when is_atom(error) do
-    "#{error}_error_count" |> String.to_atom()
-  end
-
-  defp reason_to_key({:stream_error, _, _}) do
-    :stream_error_count
-  end
-
-  defp reason_to_key({:closed, _}) do
+  defp gun_reason_to_key(:normal) do
     :closed_error_count
   end
 
-  defp reason_to_key({:badstate, _}) do
-    :protocol_error_count
+  defp gun_reason_to_key(:closed) do
+    :conn_lost_error_count
   end
 
-  defp reason_to_key(_) do
+  defp gun_reason_to_key({:shutdown, :econnrefused}) do
+    :conn_refused_error_count
+  end
+
+  defp gun_reason_to_key({:shutdown, :econnreset}) do
+    :conn_reset_error_count
+  end
+
+  defp gun_reason_to_key({:shutdown, :nxdomain}) do
+    :nx_domain_error_count
+  end
+
+  defp gun_reason_to_key({:shutdown, :etimedout}) do
+    :conn_timedout_error_count
+  end
+
+  defp gun_reason_to_key({:shutdown, :eaddrnotavail}) do
+    :addr_not_avail_error_count
+  end
+
+  defp gun_reason_to_key({:shutdown, :ehostdown}) do
+    :host_down_error_count
+  end
+
+  defp gun_reason_to_key({:shutdown, :ehostunreach}) do
+    :host_unreach_error_count
+  end
+
+  defp gun_reason_to_key({:stream_error, _, _}) do
+    :http2_stream_error_count
+  end
+
+  defp gun_reason_to_key({:closed, _}) do
+    :conn_lost_error_count
+  end
+
+  defp gun_reason_to_key({:badstate, _}) do
+    :bad_conn_state_error_count
+  end
+
+  defp gun_reason_to_key(_) do
     :unknown_error_count
+  end
+
+  defp task_reason_to_key({:timeout, {GenServer, :call, _}}) do
+    :timeout_task_error_count
+  end
+
+  defp task_reason_to_key(_) do
+    :unknown_task_error_count
   end
 
   def prepare_request(headers, body) when is_binary(body) do
