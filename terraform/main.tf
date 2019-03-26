@@ -40,13 +40,13 @@ data "external" "my_ip" {
 
 data "aws_ami" "coordinator" {
   most_recent = true
-  name_regex  = "^stressgrid-coordinator-.*"
+  name_regex  = "^stressgrid-coordinator-amd64-.*"
   owners      = ["${var.ami_owner}"]
 }
 
 data "aws_ami" "generator" {
   most_recent = true
-  name_regex  = "^stressgrid-generator-.*"
+  name_regex  = "^stressgrid-generator-amd64-.*"
   owners      = ["${var.ami_owner}"]
 }
 
