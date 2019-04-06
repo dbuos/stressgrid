@@ -175,7 +175,7 @@ resource "aws_autoscaling_group" "generator" {
   name                 = "stressgrid-generator"
   launch_configuration = "${aws_launch_configuration.generator.name}"
   min_size             = 0
-  max_size             = "${var.capacity}"
+  max_size             = 100
   desired_capacity     = "${var.capacity}"
   vpc_zone_identifier  = ["${data.aws_subnet_ids.subnets.ids}"]
 
