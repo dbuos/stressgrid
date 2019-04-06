@@ -222,22 +222,32 @@ class App extends React.Component<IAppProps, IAppState> {
                   </Sparklines>
                 </td>
               </tr>
-              <tr>
-                <th scope="row">Last Error Count</th>
-                <td>
-                  <span>{telemetryStore.errorCount}</span>
-                  <span>{telemetryStore.lastErrorTypes && <small>&nbsp;({telemetryStore.lastErrorTypes})</small>}</span>&nbsp;
-                  <FontAwesomeIcon style={{ color: telemetryStore.errorCount > 0 ? "red" : "green" }} icon="flag" />
+              {telemetryStore.lastScriptError && <tr>
+                <th scope="row">Script Error</th>
+                <td colSpan={2}>
+                  <small>{telemetryStore.lastScriptError}</small>&nbsp;
+                  <FontAwesomeIcon style={{ color: "red" }} icon="flag" />
                 </td>
-                <td>
-                  <Sparklines data={_.reverse(_.clone(telemetryStore.recentErrorCount))} height={20}>
-                    <SparklinesLine style={{ fill: "none" }} />
-                    <SparklinesSpots />
-                  </Sparklines>
-                </td>
-              </tr>
+              </tr>}
+              {telemetryStore.lastErrors && _.map(_.toPairs(telemetryStore.lastErrors), pair => {
+                const recentCounts = pair[1];
+                const type = pair[0];
+                return <tr>
+                  <th scope="row"><samp>{type}</samp> Error Count</th>
+                  <td>
+                    <span>{recentCounts[0]}</span>&nbsp;
+                    <FontAwesomeIcon style={{ color: "red" }} icon="flag" />
+                  </td>
+                  <td>
+                    <Sparklines data={_.reverse(_.clone(recentCounts))} height={20}>
+                      <SparklinesLine style={{ fill: "none" }} />
+                      <SparklinesSpots />
+                    </Sparklines>
+                  </td>
+                </tr>;
+              })}
               <tr>
-                <th scope="row">Max CPU Utilization</th>
+                <th scope="row">CPU Utilization</th>
                 <td>
                   <span>{Math.trunc(telemetryStore.cpu * 100)} %</span>&nbsp;
                   <FontAwesomeIcon style={{ color: telemetryStore.cpu > .8 ? "red" : "green" }} icon="cog" spin={_.defaultTo(telemetryStore.activeCount, 0) > 0} />
@@ -250,7 +260,7 @@ class App extends React.Component<IAppProps, IAppState> {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Total Network Receive</th>
+                <th scope="row">Network Receive</th>
                 <td>{filesize(telemetryStore.networkRx)}/sec</td>
                 <td>
                   <Sparklines data={_.reverse(_.clone(telemetryStore.recentNetworkRx))} height={20}>
@@ -260,7 +270,7 @@ class App extends React.Component<IAppProps, IAppState> {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Total Network Transmit</th>
+                <th scope="row">Network Transmit</th>
                 <td>{filesize(telemetryStore.networkTx)}/sec</td>
                 <td>
                   <Sparklines data={_.reverse(_.clone(telemetryStore.recentNetworkTx))} height={20}>
@@ -269,13 +279,6 @@ class App extends React.Component<IAppProps, IAppState> {
                   </Sparklines>
                 </td>
               </tr>
-              {telemetryStore.lastScriptError && <tr>
-                <th scope="row">Last Script Error</th>
-                <td colSpan={2}>
-                  <small>{telemetryStore.lastScriptError}</small>&nbsp;
-                  <FontAwesomeIcon style={{ color: "red" }} icon="flag" />
-                </td>
-              </tr>}
             </tbody>
           </table>
           <h3>Reports</h3>

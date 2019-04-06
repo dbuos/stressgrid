@@ -7,11 +7,10 @@ defmodule Stressgrid.Coordinator.Reporter do
             run: nil,
             generator_telemetries: %{},
             last_script_error: nil,
-            last_error_count: 0,
-            last_error_types: [],
+            last_errors: %{},
             aggregated_telemetries: [],
             aggregated_generator_counts: [],
-            aggregated_error_counts: [],
+            aggregated_last_errors: %{},
             reports: %{}
 
   @report_interval 60_000
@@ -32,7 +31,7 @@ defmodule Stressgrid.Coordinator.Reporter do
 
   defmodule Report do
     defstruct script_error: nil,
-              error_count: nil,
+              errors: nil,
               plan_name: nil,
               max_telemetry: nil,
               result_json: %{}
@@ -94,21 +93,20 @@ defmodule Stressgrid.Coordinator.Reporter do
         _,
         %Reporter{
           last_script_error: last_script_error,
-          last_error_types: last_error_types,
           aggregated_generator_counts: aggregated_generator_counts,
           aggregated_telemetries: aggregated_telemetries,
-          aggregated_error_counts: aggregated_error_counts
+          aggregated_last_errors: aggregated_last_errors
         } = reporter
       ) do
-    telemetry_json =
+   telemetry_json =
       %{
-        "generator_count" => aggregated_generator_counts,
-        "error_count" => aggregated_error_counts
+        "generator_count" => aggregated_generator_counts
       }
       |> add_script_error("last_script_error", last_script_error)
-      |> add_error_types("last_error_types", last_error_types)
+      |> add_errors("last_errors", aggregated_last_errors)
       |> Map.merge(aggregated_telemetries |> GeneratorTelemetry.to_json())
 
+    IO.inspect telemetry_json
     {:reply, {:ok, telemetry_json}, reporter}
   end
 
@@ -117,8 +115,7 @@ defmodule Stressgrid.Coordinator.Reporter do
         %Reporter{
           generator_telemetries: generator_telemetries,
           run: run,
-          last_error_count: last_error_count,
-          last_error_types: last_error_types,
+          last_errors: last_errors,
           last_script_error: last_script_error
         } = reporter
       ) do
@@ -134,15 +131,17 @@ defmodule Stressgrid.Coordinator.Reporter do
       |> Map.values()
       |> Enum.reduce(nil, &max_telemetry(&1, &2))
 
-    {error_count, error_types} =
+    last_errors =
       push_counters
-      |> Enum.reduce({0, []}, fn {key, value}, {error_count, error_types} ->
+      |> Enum.reduce(last_errors, fn {key, value}, last_errors ->
         case ~r/(.*)_error_count$/ |> Regex.run(key |> Atom.to_string()) do
           [_, type] ->
-            {error_count + value, [type |> String.to_atom() | error_types] |> Enum.uniq()}
+            type = type |> String.to_atom()
+            count = last_errors |> Map.get(type, 0)
+            last_errors |> Map.put(type, count + value)
 
           nil ->
-            {error_count, error_types}
+            last_errors
         end
       end)
 
@@ -185,8 +184,7 @@ defmodule Stressgrid.Coordinator.Reporter do
        reporter
        | generator_telemetries: generator_telemetries,
          run: run,
-         last_error_count: last_error_count + error_count,
-         last_error_types: last_error_types |> Enum.concat(error_types) |> Enum.uniq(),
+         last_errors: last_errors,
          last_script_error:
            if(first_script_error != nil, do: first_script_error, else: last_script_error)
      }}
@@ -209,8 +207,8 @@ defmodule Stressgrid.Coordinator.Reporter do
        reporter
        | run: %Run{id: id, plan_name: plan_name, writers: writers},
          last_script_error: nil,
-         last_error_count: 0,
-         last_error_types: []
+         last_errors: %{},
+         aggregated_last_errors: %{}
      }}
   end
 
@@ -219,7 +217,7 @@ defmodule Stressgrid.Coordinator.Reporter do
         %Reporter{
           run: run,
           last_script_error: last_script_error,
-          last_error_count: last_error_count,
+          last_errors: last_errors,
           reports: reports,
           writer_configs: writer_configs
         } = reporter
@@ -240,7 +238,7 @@ defmodule Stressgrid.Coordinator.Reporter do
 
         report = %Report{
           script_error: last_script_error,
-          error_count: last_error_count,
+          errors: last_errors,
           plan_name: plan_name,
           max_telemetry: max_telemetry,
           result_json: result_json
@@ -374,10 +372,10 @@ defmodule Stressgrid.Coordinator.Reporter do
         :aggregate,
         %Reporter{
           generator_telemetries: generator_telemetries,
-          last_error_count: last_error_count,
+          last_errors: last_errors,
           aggregated_telemetries: aggregated_telemetries,
           aggregated_generator_counts: aggregated_generator_counts,
-          aggregated_error_counts: aggregated_error_counts
+          aggregated_last_errors: aggregated_last_errors
         } = reporter
       ) do
     Process.send_after(self(), :aggregate, @aggregate_interval)
@@ -395,16 +393,19 @@ defmodule Stressgrid.Coordinator.Reporter do
       [Map.size(generator_telemetries) | aggregated_generator_counts]
       |> Enum.take(@aggregated_max_size)
 
-    aggregated_error_counts =
-      [last_error_count | aggregated_error_counts]
-      |> Enum.take(@aggregated_max_size)
+    aggregated_last_errors =
+      last_errors
+      |> Enum.reduce(aggregated_last_errors, fn {type, count}, aggregated_last_errors ->
+        aggregated_last_errors
+        |> Map.update(type, [count], &([count | &1] |> Enum.take(@aggregated_max_size)))
+      end)
 
     {:noreply,
      %{
        reporter
        | aggregated_telemetries: aggregated_telemetries,
          aggregated_generator_counts: aggregated_generator_counts,
-         aggregated_error_counts: aggregated_error_counts
+         aggregated_last_errors: aggregated_last_errors
      }}
   end
 
@@ -466,18 +467,18 @@ defmodule Stressgrid.Coordinator.Reporter do
 
   defp report_to_json(id, %Report{
          script_error: script_error,
-         error_count: error_count,
+         errors: errors,
          plan_name: plan_name,
          result_json: result_json,
          max_telemetry: max_telemetry
        }) do
     %{
       "id" => id,
-      "error_count" => error_count,
       "name" => plan_name,
       "result" => result_json
     }
     |> add_script_error("script_error", script_error)
+    |> add_errors("errors", errors)
     |> Map.merge(max_telemetry |> GeneratorTelemetry.to_json("max_"))
   end
 
@@ -524,12 +525,12 @@ defmodule Stressgrid.Coordinator.Reporter do
     })
   end
 
-  defp add_error_types(json, _, []) do
+  defp add_errors(json, _, errors) when map_size(errors) === 0 do
     json
   end
 
-  defp add_error_types(json, name, types) do
+  defp add_errors(json, name, errors) do
     json
-    |> Map.put(name, types)
+    |> Map.put(name, errors)
   end
 end

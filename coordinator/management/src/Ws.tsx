@@ -16,9 +16,8 @@ interface ITelemetry {
   network_rx: number[];
   network_tx: number[];
   active_count: number[];
-  error_count: number[];
+  last_errors?: Map<string, number[]>;
   last_script_error?: IScriptError;
-  last_error_types?: string[];
   generator_count: number[];
 }
 
@@ -37,7 +36,7 @@ interface IResult {
 interface IReport {
   id: string;
   name: string;
-  error_count: number;
+  errors?: Map<string, number[]>;
   script_error?: IScriptError;
   max_cpu: number;
   max_network_rx: number;
@@ -138,8 +137,7 @@ export class Ws {
     const t = g.telemetry;
     telemetryStore.update(
       t.last_script_error ? t.last_script_error.description : null,
-      t.last_error_types ? _.join(t.last_error_types, ", ") : null,
-      t.error_count,
+      t.last_errors ? t.last_errors : null,
       t.cpu,
       t.network_rx,
       t.network_tx,
@@ -164,7 +162,7 @@ export class Ws {
       {
         csvUrl: r.result.csv_url,
         cwUrl: r.result.cw_url,
-        hasNonScriptErrors: r.error_count !== 0,
+        hasNonScriptErrors: !!r.errors,
         hasScriptErrors: !!r.script_error,
         maxCpu: r.max_cpu,
         maxNetworkRx: r.max_network_rx,

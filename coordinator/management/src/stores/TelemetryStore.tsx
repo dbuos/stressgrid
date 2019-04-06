@@ -3,8 +3,7 @@ import { action, computed, observable } from 'mobx';
 
 export class TelemetryStore {
   @observable public lastScriptError: string | null = null;
-  @observable public lastErrorTypes: string | null = null;
-  @observable public recentErrorCount: number[] = [];
+  @observable public lastErrors: Map<string, number[]> | null = null;
   @observable public recentCpu: number[] = [];
   @observable public recentNetworkRx: number[] = [];
   @observable public recentNetworkTx: number[] = [];
@@ -20,19 +19,14 @@ export class TelemetryStore {
     this.recentGeneratorCount = [];
   }
 
-  @action public update = (lastScriptError: string | null, lastErrorTypes: string | null, recentErrorCount: number[], recentCpu: number[], recentNetworkRx: number[], recentNetworkTx: number[], recentActiveCount: number[], recentGeneratorCount: number[]) => {
+  @action public update = (lastScriptError: string | null, lastErrors: Map<string, number[]> | null, recentCpu: number[], recentNetworkRx: number[], recentNetworkTx: number[], recentActiveCount: number[], recentGeneratorCount: number[]) => {
     this.lastScriptError = lastScriptError;
-    this.lastErrorTypes = lastErrorTypes;
-    this.recentErrorCount = recentErrorCount;
+    this.lastErrors = lastErrors;
     this.recentCpu = recentCpu;
     this.recentNetworkRx = recentNetworkRx;
     this.recentNetworkTx = recentNetworkTx;
     this.recentActiveCount = recentActiveCount;
     this.recentGeneratorCount = recentGeneratorCount;
-  }
-
-  @computed get errorCount() {
-    return _.defaultTo(this.recentErrorCount[0], 0);
   }
 
   @computed get cpu() {
