@@ -365,8 +365,6 @@ defmodule Stressgrid.Generator.Device do
           }
         } = device
       ) do
-    Logger.error("Script exited with #{inspect(reason)}")
-
     {:noreply,
      device
      |> recycle(@recycle_delay)
@@ -570,6 +568,10 @@ defmodule Stressgrid.Generator.Device do
     :host_unreach_error_count
   end
 
+  defp gun_reason_to_key({:shutdown, :emfile}) do
+    :too_many_open_files_error_count
+  end
+
   defp gun_reason_to_key({:stream_error, _, _}) do
     :http2_stream_error_count
   end
@@ -582,7 +584,13 @@ defmodule Stressgrid.Generator.Device do
     :bad_conn_state_error_count
   end
 
-  defp gun_reason_to_key(_) do
+  defp gun_reason_to_key(:noproc) do
+    :conn_terminated_error_count
+  end
+
+  defp gun_reason_to_key(reason) do
+    Logger.error("Gun error #{inspect(reason)}")
+
     :unknown_error_count
   end
 
@@ -590,7 +598,9 @@ defmodule Stressgrid.Generator.Device do
     :timeout_task_error_count
   end
 
-  defp task_reason_to_key(_) do
+  defp task_reason_to_key(reason) do
+    Logger.error("Script error #{inspect(reason)}")
+
     :unknown_task_error_count
   end
 
