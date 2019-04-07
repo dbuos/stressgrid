@@ -16,7 +16,8 @@ defmodule Stressgrid.Generator.Connection do
             net_bytes_tx: nil,
             timeout_ref: nil,
             stream_ref: nil,
-            cohorts: %{}
+            cohorts: %{},
+            address_base: 0
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
@@ -186,37 +187,38 @@ defmodule Stressgrid.Generator.Connection do
   end
 
   defp receive_term(
-         %Connection{cohorts: cohorts} = connection,
+         %Connection{cohorts: cohorts, address_base: address_base} = connection,
          {:start_cohort, %{id: id, blocks: blocks, addresses: addresses}}
        )
        when is_binary(id) and is_list(blocks) do
     {:ok, cohort_pid} = Cohort.Supervisor.start_child(id)
 
-    blocks
-    |> Enum.reduce(0, fn %{script: script} = block, i when is_binary(script) ->
-      params = block |> Map.get(:params, %{})
-      size = block |> Map.get(:size, 1)
+    i =
+      blocks
+      |> Enum.reduce(0, fn %{script: script} = block, i when is_binary(script) ->
+        params = block |> Map.get(:params, %{})
+        size = block |> Map.get(:size, 1)
 
-      1..size
-      |> Enum.reduce(i, fn _, i ->
-        address =
-          addresses
-          |> Enum.at(rem(i, length(addresses)))
+        1..size
+        |> Enum.reduce(i, fn _, i ->
+          address =
+            addresses
+            |> Enum.at(rem(address_base + i, length(addresses)))
 
-        {:ok, _} =
-          Device.Supervisor.start_child(
-            cohort_pid,
-            "#{id}-#{i}",
-            address,
-            script,
-            params
-          )
+          {:ok, _} =
+            Device.Supervisor.start_child(
+              cohort_pid,
+              "#{id}-#{i}",
+              address,
+              script,
+              params
+            )
 
-        i + 1
+          i + 1
+        end)
       end)
-    end)
 
-    %{connection | cohorts: cohorts |> Map.put(id, cohort_pid)}
+    %{connection | cohorts: cohorts |> Map.put(id, cohort_pid), address_base: address_base + i}
   end
 
   defp receive_term(
