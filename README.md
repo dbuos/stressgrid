@@ -9,7 +9,7 @@ Stressgrid consists of two components: the **generator** and the **coordinator**
 
 The generator is a horizontally-scalable component that opens connections to a target server farm, generates the workload, and collects metrics.
 
-The coordinator is a central component that orchestrates multiple generators to execute a **plan**. The plan specifies how many connections to maintain and for how long, and how to ramp up and wind down the workload. 
+The coordinator is a central component that orchestrates multiple generators to execute a **plan**. The plan specifies how many connections to maintain and for how long, and how to ramp up and wind down the workload.
 
 The plan also specifies scripts and their input parameters. Each connection is associated with an instance of a **script** and the corresponding input parameters.
 
@@ -55,7 +55,7 @@ Once Stressgrid resources are created, you can explicitly add the `stressgrid-ge
 Stressgrid management website is the place to define and run the test plans. The left pane is where the test plan is defined. There are the following settings.
 
 - Plan name describes the combination of plan settings and target system, for example, let's say we are testing photo gallery: 10k-browsing-photos-c5-2xlarge would be for simulation of 10k users browsing photos against c5.2xlarge instance.
-- The desired number of devices gets rounded down to the effective number of devices by multiples of ramp step size. Rampup and rampdown happen in discrete steps, and each generator has a fixed number of devices that are started and stopped in each step: 10. Therefore ramp step size is 10 times the number of generators. For example, if we use 100 generators, then the ramp step size will be 1000. We can run tests with the effective number of devices as multiples of 1000. 
+- The desired number of devices gets rounded down to the effective number of devices by multiples of ramp step size. Rampup and rampdown happen in discrete steps, and each generator has a fixed number of devices that are started and stopped in each step: 10. Therefore ramp step size is 10 times the number of generators. For example, if we use 100 generators, then the ramp step size will be 1000. We can run tests with the effective number of devices as multiples of 1000.
 - The script defines the behavior we want to simulate. It is written in the Elixir programming language. In addition to standard language modules like `Enum`, there are special functions to execute HTTP requests and to delay for a specified period of time.
 - The target hosts are one or more IP addresses or hostnames to send HTTP requests. When more than one is specified the round-robin strategy is used for load balancing. The target port used for all target hosts.
 - The rampup, sustain and rampdown define the timing parameters of the workload. Rampup and rampdown intervals are divided into the number of discrete steps each one adding or removing device connections. The sustain interval is when the target number of device connections is maintained.
@@ -123,7 +123,7 @@ To create an AMI for the generator:
 
 # Launching EC2 instances for generator and the coordinator
 
-When launching coordinator and generator instances, you will need to pass the corresponding configuration using [EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html). If you are using our Terraform script, it will set this up for you. 
+When launching coordinator and generator instances, you will need to pass the corresponding configuration using [EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html). If you are using our Terraform script, it will set this up for you.
 
 Example for the coordinator:
 
@@ -136,7 +136,7 @@ Example for the generator:
     #!/bin/bash
     echo "COORDINATOR_URL=ws://ip-172-31-22-7.us-west-1.compute.internal:9696" > /etc/default/stressgrid-generator.env
     service stressgrid-generator restart
-    
+
 # Getting help
 
 We’re monitoring the [Stressgrid Telegram group](https://t.me/joinchat/Lx57txRJiNi1ciJuxKFFgg) and [#stressgrid on Freenode](irc:freenode.net/channel/stressgrid), if you have any questions.
