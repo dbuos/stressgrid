@@ -98,7 +98,7 @@ defmodule Stressgrid.Coordinator.Reporter do
           aggregated_last_errors: aggregated_last_errors
         } = reporter
       ) do
-   telemetry_json =
+    telemetry_json =
       %{
         "generator_count" => aggregated_generator_counts
       }
@@ -106,7 +106,6 @@ defmodule Stressgrid.Coordinator.Reporter do
       |> add_errors("last_errors", aggregated_last_errors)
       |> Map.merge(aggregated_telemetries |> GeneratorTelemetry.to_json())
 
-    IO.inspect telemetry_json
     {:reply, {:ok, telemetry_json}, reporter}
   end
 
