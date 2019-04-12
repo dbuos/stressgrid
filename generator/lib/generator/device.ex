@@ -1,56 +1,70 @@
 defmodule Stressgrid.Generator.Device do
   @moduledoc false
 
-  alias Stressgrid.Generator.{Device, DeviceContext}
+  alias Stressgrid.Generator.{Device}
 
-  use GenServer
   require Logger
 
-  @recycle_delay 1_000
-
-  defstruct address: nil,
-            task_fn: nil,
+  defstruct task_fn: nil,
             task: nil,
             script_error: nil,
             hists: %{},
-            counters: %{},
-            last_ts: nil,
-            conn_pid: nil,
-            conn_ref: nil,
-            request_from: nil,
-            stream_ref: nil,
-            response_status: nil,
-            response_headers: nil,
-            response_iodata: nil
+            counters: %{}
 
-  def start_link(args) do
-    GenServer.start_link(__MODULE__, args)
-  end
+  defmacro __using__(opts) do
+    device_functions = opts |> Keyword.fetch!(:device_functions)
+    device_macros = opts |> Keyword.fetch!(:device_macros)
 
-  def init(args) do
-    id = args |> Keyword.fetch!(:id)
-    task_script = args |> Keyword.fetch!(:script)
-    task_params = args |> Keyword.fetch!(:params)
+    quote do
+      alias Stressgrid.Generator.{Device}
 
-    _ = Kernel.send(self(), {:init, id, task_script, task_params})
+      def handle_call(
+            {:collect, to_hists},
+            _,
+            state
+          ) do
+        {r, state} = state |> Device.do_collect(to_hists)
+        {:reply, r, state}
+      end
 
-    {:ok,
-     %Device{
-       address: args |> Keyword.fetch!(:address)
-     }}
-  end
+      def handle_info({:init, id, task_script, task_params}, state) do
+        {:noreply,
+         state
+         |> Device.do_init(
+           id,
+           task_script,
+           task_params,
+           unquote(device_functions),
+           unquote(device_macros)
+         )}
+      end
 
-  def request(pid, method, path, headers, body) when is_map(headers) do
-    request(pid, method, path, headers |> Map.to_list(), body)
-  end
+      def handle_info(
+            {task_ref, :ok},
+            %{device: %Device{task: %Task{ref: task_ref}} = device} = state
+          )
+          when is_reference(task_ref) do
+        {:noreply, state |> Device.do_task_completed()}
+      end
 
-  def request(pid, method, path, headers, body) when is_list(headers) do
-    if Process.alive?(pid) do
-      GenServer.call(pid, {:request, method, path, headers, body})
-    else
-      exit(:device_terminated)
+      def handle_info(
+            {:DOWN, task_ref, :process, task_pid, reason},
+            %{
+              device:
+                %Device{
+                  task: %Task{
+                    ref: task_ref,
+                    pid: task_pid
+                  }
+                } = device
+            } = state
+          ) do
+        {:noreply, state |> Device.do_task_down(reason)}
+      end
     end
   end
+
+  @recycle_delay 1_000
 
   def collect(pid, to_hists) do
     if Process.alive?(pid) do
@@ -60,11 +74,24 @@ defmodule Stressgrid.Generator.Device do
     end
   end
 
-  def handle_call(
-        {:collect, to_hists},
-        _,
-        %Device{script_error: script_error, hists: from_hists, counters: counters, task: task} =
-          device
+  def init(state, args) do
+    id = args |> Keyword.fetch!(:id)
+    task_script = args |> Keyword.fetch!(:script)
+    task_params = args |> Keyword.fetch!(:params)
+
+    _ = Kernel.send(self(), {:init, id, task_script, task_params})
+
+    state
+    |> Map.put(:device, %Device{})
+  end
+
+  def do_collect(
+        %{
+          device:
+            %Device{script_error: script_error, hists: from_hists, counters: counters, task: task} =
+              device
+        } = state,
+        to_hists
       ) do
     hists = add_hists(to_hists, from_hists)
 
@@ -79,36 +106,18 @@ defmodule Stressgrid.Generator.Device do
       |> Enum.map(fn {key, _} -> {key, 0} end)
       |> Map.new()
 
-    {:reply, {:ok, script_error, task != nil, hists, counters},
-     %{device | counters: reset_counters}}
+    {{:ok, script_error, task != nil, hists, counters},
+     %{state | device: %{device | counters: reset_counters}}}
   end
 
-  def handle_call({:request, _, _, _, _}, _, %Device{conn_pid: nil} = device) do
-    {:reply, {:error, :disconnected}, device}
-  end
-
-  def handle_call(
-        {:request, method, path, headers, body},
-        request_from,
-        %Device{conn_pid: conn_pid, stream_ref: nil, request_from: nil, last_ts: nil} = device
+  def do_init(
+        %{device: device} = state,
+        id,
+        task_script,
+        task_params,
+        device_functions,
+        device_macros
       ) do
-    Logger.debug("Starting request #{method} #{path}")
-
-    case prepare_request(headers, body) do
-      {:ok, headers, body} ->
-        ts = :os.system_time(:micro_seconds)
-
-        stream_ref = :gun.request(conn_pid, method, path, headers, body)
-
-        device = %{device | stream_ref: stream_ref, request_from: request_from, last_ts: ts}
-        {:noreply, device}
-
-      error ->
-        {:reply, error, device}
-    end
-  end
-
-  def handle_info({:init, id, task_script, task_params}, device) do
     Logger.debug("Init device #{id}")
 
     %Macro.Env{functions: functions, macros: macros} = __ENV__
@@ -135,100 +144,35 @@ defmodule Stressgrid.Generator.Device do
         |> Code.eval_string([device_pid: device_pid, params: task_params],
           functions: [
             kernel_functions,
-            {DeviceContext,
-             [
-               delay: 1,
-               delay: 2
-             ]
-             |> Enum.sort()}
+            device_functions
           ],
           macros: [
             kernel_macros,
-            {DeviceContext,
-             [
-               get: 1,
-               get: 2,
-               options: 1,
-               options: 2,
-               delete: 1,
-               delete: 2,
-               post: 1,
-               post: 2,
-               post: 3,
-               put: 1,
-               put: 2,
-               put: 3,
-               patch: 1,
-               patch: 2,
-               patch: 3
-             ]
-             |> Enum.sort()}
+            device_macros
           ]
         )
 
       _ = Kernel.send(self(), :open)
 
-      {:noreply,
-       %{
-         device
-         | task_fn: task_fn,
-           hists: %{
-             conn_us: make_hist(),
-             headers_us: make_hist(),
-             body_us: make_hist()
-           }
-       }}
+      %{
+        state
+        | device: %{
+            device
+            | task_fn: task_fn,
+              hists: %{
+                conn_us: make_hist(),
+                headers_us: make_hist(),
+                body_us: make_hist()
+              }
+          }
+      }
     catch
       :error, error ->
-        {:noreply, %{device | script_error: %{error: error, script: task_script}}}
+        %{state | device: %{device | script_error: %{error: error, script: task_script}}}
     end
   end
 
-  def handle_info(
-        :open,
-        %Device{conn_pid: nil, address: {:tcp, host, port}, last_ts: nil} = device
-      ) do
-    Logger.debug("Open gun #{host}:#{port}")
-
-    ts = :os.system_time(:micro_seconds)
-
-    {:ok, conn_pid} =
-      :gun.start_link(self(), host |> String.to_charlist(), port, %{
-        retry: 0,
-        http_opts: %{keepalive: :infinity}
-      })
-
-    conn_ref = Process.monitor(conn_pid)
-    true = Process.unlink(conn_pid)
-
-    {:noreply, %{device | conn_pid: conn_pid, conn_ref: conn_ref, last_ts: ts}}
-  end
-
-  def handle_info({task_ref, :ok}, %Device{task: %Task{ref: task_ref}} = device)
-      when is_reference(task_ref) do
-    Logger.debug("Script exited normally")
-
-    true = Process.demonitor(task_ref, [:flush])
-    device = %{device | task: nil}
-
-    {:noreply,
-     device
-     |> recycle()}
-  end
-
-  def handle_info(
-        {:gun_up, conn_pid, _protocol},
-        %Device{
-          task_fn: task_fn,
-          conn_pid: conn_pid,
-          last_ts: last_ts
-        } = device
-      )
-      when last_ts != nil do
-    Logger.debug("Gun up")
-
-    ts = :os.system_time(:micro_seconds)
-
+  def start_task(%{device: %Device{task_fn: task_fn} = device} = state) do
     task =
       %Task{pid: task_pid} =
       Task.async(fn ->
@@ -244,234 +188,66 @@ defmodule Stressgrid.Generator.Device do
 
     true = Process.unlink(task_pid)
 
-    {:noreply,
-     %{device | last_ts: nil, task: task}
-     |> inc_counter("conn_count" |> String.to_atom(), 1)
-     |> record_hist(:conn_us, ts - last_ts)}
+    %{state | device: %{device | task: task}}
   end
 
-  def handle_info(
-        {:gun_down, conn_pid, _, reason, _, _},
-        %Device{
-          conn_pid: conn_pid
-        } = device
+  def do_task_completed(%{device: %Device{task: %Task{ref: task_ref}} = device} = state) do
+    Logger.debug("Script exited normally")
+
+    true = Process.demonitor(task_ref, [:flush])
+
+    state |> recycle()
+  end
+
+  def do_task_down(
+        state,
+        reason
       ) do
-    Logger.debug("Gun down with #{inspect(reason)}")
-
-    {:noreply,
-     device
-     |> recycle(@recycle_delay)
-     |> inc_counter(reason |> gun_reason_to_key(), 1)}
+    state
+    |> recycle(true)
+    |> inc_counter(reason |> task_reason_to_key(), 1)
   end
 
-  def handle_info(
-        {:gun_response, conn_pid, stream_ref, is_fin, status, headers},
-        %Device{
-          conn_pid: conn_pid,
-          stream_ref: stream_ref,
-          last_ts: last_ts
-        } = device
-      )
-      when last_ts != nil do
-    ts = :os.system_time(:micro_seconds)
-
-    device =
-      %{device | response_status: status, response_headers: headers, response_iodata: []}
-      |> record_hist(:headers_us, ts - last_ts)
-      |> inc_counter("response_count" |> String.to_atom(), 1)
-
-    case is_fin do
-      :nofin ->
-        {:noreply, %{device | last_ts: ts}}
-
-      :fin ->
-        {:noreply, device |> complete_request()}
-    end
-  end
-
-  def handle_info(
-        {:gun_data, conn_pid, stream_ref, is_fin, data},
-        %Device{
-          conn_pid: conn_pid,
-          stream_ref: stream_ref,
-          response_iodata: response_iodata,
-          last_ts: last_ts
-        } = device
-      )
-      when last_ts != nil do
-    ts = :os.system_time(:micro_seconds)
-
-    device = %{device | response_iodata: [data | response_iodata]}
-
-    case is_fin do
-      :nofin ->
-        {:noreply, device}
-
-      :fin ->
-        {:noreply, device |> record_hist(:body_us, ts - last_ts) |> complete_request()}
-    end
-  end
-
-  def handle_info(
-        {:gun_error, conn_pid, stream_ref, reason},
-        %Device{
-          stream_ref: stream_ref,
-          conn_pid: conn_pid
-        } = device
+  def recycle(
+        %{device: %Device{task: task} = device} = state,
+        delay \\ false
       ) do
-    Logger.debug("Gun error #{inspect(reason)}")
-
-    {:noreply,
-     device
-     |> recycle(@recycle_delay)
-     |> inc_counter(reason |> gun_reason_to_key(), 1)}
-  end
-
-  def handle_info(
-        {:gun_error, conn_pid, reason},
-        %Device{
-          conn_pid: conn_pid
-        } = device
-      ) do
-    Logger.debug("Gun error #{inspect(reason)}")
-
-    {:noreply,
-     device
-     |> recycle(@recycle_delay)
-     |> inc_counter(reason |> gun_reason_to_key(), 1)}
-  end
-
-  def handle_info(
-        {:DOWN, conn_ref, :process, conn_pid, reason},
-        %Device{
-          conn_ref: conn_ref,
-          conn_pid: conn_pid
-        } = device
-      ) do
-    Logger.debug("Gun exited with #{inspect(reason)}")
-
-    {:noreply,
-     device
-     |> recycle(@recycle_delay)
-     |> inc_counter(reason |> gun_reason_to_key(), 1)}
-  end
-
-  def handle_info(
-        {:DOWN, task_ref, :process, task_pid, reason},
-        %Device{
-          task: %Task{
-            ref: task_ref,
-            pid: task_pid
-          }
-        } = device
-      ) do
-    {:noreply,
-     device
-     |> recycle(@recycle_delay)
-     |> inc_counter(reason |> task_reason_to_key(), 1)}
-  end
-
-  def handle_info(
-        _,
-        device
-      ) do
-    {:noreply, device}
-  end
-
-  defp complete_request(
-         %Device{
-           request_from: request_from,
-           response_status: response_status,
-           response_headers: response_headers,
-           response_iodata: response_iodata
-         } = device
-       ) do
-    Logger.debug("Complete request #{response_status}")
-
-    if request_from != nil do
-      response_iodata = response_iodata |> Enum.reverse()
-
-      response_body =
-        case response_headers |> List.keyfind("content-type", 0) do
-          {_, content_type} ->
-            case :cow_http_hd.parse_content_type(content_type) do
-              {"application", "json", _} ->
-                case Jason.decode(response_iodata) do
-                  {:ok, json} ->
-                    {:json, json}
-
-                  _ ->
-                    response_iodata
-                end
-
-              _ ->
-                response_iodata
-            end
-
-          _ ->
-            response_iodata
-        end
-
-      GenServer.reply(
-        request_from,
-        {response_status, response_headers, response_body}
-      )
-    end
-
-    %{
-      device
-      | request_from: nil,
-        stream_ref: nil,
-        response_status: nil,
-        response_headers: nil,
-        response_iodata: nil,
-        last_ts: nil
-    }
-  end
-
-  defp recycle(
-         %Device{conn_pid: conn_pid, conn_ref: conn_ref, stream_ref: stream_ref, task: task} =
-           device,
-         delay \\ 0
-       ) do
     Logger.debug("Recycle device")
 
     if task != nil do
       Task.shutdown(task, :brutal_kill)
     end
 
-    if conn_ref != nil do
-      true = Process.demonitor(conn_ref, [:flush])
+    _ = Kernel.send(self(), :recycled)
+    _ = Process.send_after(self(), :open, if(delay, do: @recycle_delay, else: 0))
 
-      if stream_ref == nil do
-        :ok =
-          try do
-            %{socket: socket} = :gun.info(conn_pid)
-            :gun_tcp.setopts(socket, [{:linger, {true, 0}}])
-            :gun_tcp.close(socket)
-            :ok
-          catch
-            :exit, {:noproc, {:sys, :get_state, _}} ->
-              :ok
-          end
+    %{state | device: %{device | task: nil}}
+  end
+
+  def record_hist(%{device: %Device{hists: hists} = device} = state, key, value) do
+    {device, hist} =
+      case hists |> Map.get(key) do
+        nil ->
+          hist = make_hist()
+          {%{device | hists: hists |> Map.put(key, hist)}, hist}
+
+        hist ->
+          {device, hist}
       end
 
-      _ = :gun.shutdown(conn_pid)
-    end
+    :hdr_histogram.record(hist, value)
+    %{state | device: device}
+  end
 
-    _ = Process.send_after(self(), :open, delay)
-
+  def inc_counter(%{device: %Device{counters: counters} = device} = state, key, value) do
     %{
-      device
-      | conn_pid: nil,
-        conn_ref: nil,
-        task: nil,
-        request_from: nil,
-        stream_ref: nil,
-        response_status: nil,
-        response_headers: nil,
-        response_iodata: nil,
-        last_ts: nil
+      state
+      | device: %{
+          device
+          | counters:
+              counters
+              |> Map.update(key, value, fn c -> c + value end)
+        }
     }
   end
 
@@ -508,93 +284,9 @@ defmodule Stressgrid.Generator.Device do
     hist
   end
 
-  defp record_hist(%Device{hists: hists} = device, key, value) do
-    {device, hist} =
-      case hists |> Map.get(key) do
-        nil ->
-          hist = make_hist()
-          {%{device | hists: hists |> Map.put(key, hist)}, hist}
-
-        hist ->
-          {device, hist}
-      end
-
-    :hdr_histogram.record(hist, value)
-    device
-  end
-
-  defp inc_counter(%Device{counters: counters} = device, key, value) do
-    %{
-      device
-      | counters:
-          counters
-          |> Map.update(key, value, fn c -> c + value end)
-    }
-  end
-
-  defp gun_reason_to_key(:normal) do
-    :closed_error_count
-  end
-
-  defp gun_reason_to_key(:closed) do
-    :conn_lost_error_count
-  end
-
-  defp gun_reason_to_key({:shutdown, :econnrefused}) do
-    :conn_refused_error_count
-  end
-
-  defp gun_reason_to_key({:shutdown, :econnreset}) do
-    :conn_reset_error_count
-  end
-
-  defp gun_reason_to_key({:shutdown, :nxdomain}) do
-    :nx_domain_error_count
-  end
-
-  defp gun_reason_to_key({:shutdown, :etimedout}) do
-    :conn_timedout_error_count
-  end
-
-  defp gun_reason_to_key({:shutdown, :eaddrnotavail}) do
-    :addr_not_avail_error_count
-  end
-
-  defp gun_reason_to_key({:shutdown, :ehostdown}) do
-    :host_down_error_count
-  end
-
-  defp gun_reason_to_key({:shutdown, :ehostunreach}) do
-    :host_unreach_error_count
-  end
-
-  defp gun_reason_to_key({:shutdown, :emfile}) do
-    :too_many_open_files_error_count
-  end
-
-  defp gun_reason_to_key({:stream_error, _, _}) do
-    :http2_stream_error_count
-  end
-
-  defp gun_reason_to_key({:closed, _}) do
-    :conn_lost_error_count
-  end
-
-  defp gun_reason_to_key({:badstate, _}) do
-    :bad_conn_state_error_count
-  end
-
-  defp gun_reason_to_key(:noproc) do
-    :conn_terminated_error_count
-  end
-
-  defp gun_reason_to_key(reason) do
-    Logger.error("Gun error #{inspect(reason)}")
-
-    :unknown_error_count
-  end
-
   defp task_reason_to_key({:timeout, {GenServer, :call, _}}) do
+    Logger.debug("Script timeout")
+
     :timeout_task_error_count
   end
 
@@ -602,28 +294,5 @@ defmodule Stressgrid.Generator.Device do
     Logger.error("Script error #{inspect(reason)}")
 
     :unknown_task_error_count
-  end
-
-  def prepare_request(headers, body) when is_binary(body) do
-    {:ok, headers, body}
-  end
-
-  def prepare_request(headers, {:json, json}) do
-    case Jason.encode(json) do
-      {:ok, body} ->
-        headers =
-          headers
-          |> Enum.reject(fn
-            {"content-type", _} -> true
-            {"Content-Type", _} -> true
-            _ -> false
-          end)
-          |> Enum.concat([{"content-type", "application/json; charset=utf-8"}])
-
-        {:ok, headers, body}
-
-      error ->
-        error
-    end
   end
 end

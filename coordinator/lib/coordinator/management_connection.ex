@@ -185,7 +185,7 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
 
   defp parse_address_json(json) do
     json
-    |> Enum.reduce({:tcp, nil, 80}, fn
+    |> Enum.reduce({:http, nil, 80}, fn
       {"host", host}, acc when is_binary(host) ->
         acc |> put_elem(1, host)
 
@@ -193,10 +193,10 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
         acc |> put_elem(2, port)
 
       {"protocol", "http"}, acc ->
-        acc |> put_elem(0, :tcp)
+        acc |> put_elem(0, :http)
 
       {"protocol", "https"}, acc ->
-        acc |> put_elem(0, :tls)
+        acc |> put_elem(0, :https)
 
       _, acc ->
         acc

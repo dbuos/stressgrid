@@ -19,7 +19,8 @@ end)`;
 const defaultPlan = {
   addresses: [{
     host: 'localhost',
-    port: 5000
+    port: 5000,
+    protocol: 'http'
   }],
   blocks: [{
     params: {},
@@ -52,6 +53,7 @@ interface IAppState {
   params: string;
   host: string;
   port: number;
+  protocol: string;
   rampupSecs: number;
   sustainSecs: number;
   rampdownSecs: number;
@@ -73,6 +75,7 @@ class App extends React.Component<IAppProps, IAppState> {
       params: JSON.stringify(defaultPlan.blocks[0].params),
       planModal: false,
       port: defaultPlan.addresses[0].port,
+      protocol: defaultPlan.addresses[0].protocol,
       rampdownSecs: Math.trunc((defaultPlan.opts.ramp_steps * defaultPlan.opts.rampdown_step_ms) / 1000),
       rampupSecs: Math.trunc((defaultPlan.opts.ramp_steps * defaultPlan.opts.rampup_step_ms) / 1000),
       script: defaultScript,
@@ -130,6 +133,15 @@ class App extends React.Component<IAppProps, IAppState> {
                   <textarea className="form-control" id="params" rows={1} value={this.state.params} onChange={this.updateParams} />
                 </div>
                 <div className="row">
+                  <div className="col">
+                    <div className="form-group">
+                      <label htmlFor="protocol">Protocol</label>
+                      <select className="form-control" id="protocol" value={this.state.protocol} onChange={this.updateProtocol}>
+                        <option>http</option>
+                        <option>https</option>
+                      </select>
+                    </div>
+                  </div>
                   <div className="col">
                     <div className="form-group">
                       <label htmlFor="host">Target host(s)</label>
@@ -340,6 +352,10 @@ class App extends React.Component<IAppProps, IAppState> {
     this.setState({ params: event.currentTarget.value });
   }
 
+  private updateProtocol = (event: React.SyntheticEvent<HTMLSelectElement>) => {
+    this.setState({ protocol: event.currentTarget.value });
+  }
+
   private updateHost = (event: React.SyntheticEvent<HTMLInputElement>) => {
     this.setState({ host: event.currentTarget.value });
   }
@@ -395,6 +411,7 @@ class App extends React.Component<IAppProps, IAppState> {
         try {
           const name = this.state.name;
           const port = this.state.port;
+          const protocol = this.state.protocol;          
           const size = telemetryStore.size;
           const rampSteps = telemetryStore.rampSteps;
           const rampdownStepMs = (this.state.rampdownSecs * 1000) / rampSteps;
@@ -411,7 +428,8 @@ class App extends React.Component<IAppProps, IAppState> {
             addresses: _.map(_.split(this.state.host, ","), host => {
               return {
                 host: _.trim(host),
-                port
+                port,
+                protocol
               };
             }),
             blocks: [{
