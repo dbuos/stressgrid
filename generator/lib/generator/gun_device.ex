@@ -1,13 +1,18 @@
 defmodule Stressgrid.Generator.GunDevice do
   @moduledoc false
 
-  alias Stressgrid.Generator.{Device, GunDevice, GunDeviceContext}
+  alias Stressgrid.Generator.{
+    Device,
+    DeviceContext,
+    GunDevice,
+    GunDeviceContext
+  }
 
   use GenServer
 
   use Device,
     device_functions:
-      {GunDeviceContext,
+      {DeviceContext,
        [
          delay: 1,
          delay: 2
@@ -37,7 +42,6 @@ defmodule Stressgrid.Generator.GunDevice do
   require Logger
 
   defstruct address: nil,
-            last_ts: nil,
             conn_pid: nil,
             conn_ref: nil,
             request_from: nil,
@@ -73,17 +77,19 @@ defmodule Stressgrid.Generator.GunDevice do
   def handle_call(
         {:request, method, path, headers, body},
         request_from,
-        %GunDevice{conn_pid: conn_pid, stream_ref: nil, request_from: nil, last_ts: nil} = device
+        %GunDevice{conn_pid: conn_pid, stream_ref: nil, request_from: nil} = device
       ) do
     Logger.debug("Starting request #{method} #{path}")
 
     case prepare_request(headers, body) do
       {:ok, headers, body} ->
-        ts = :os.system_time(:micro_seconds)
+        device =
+          device
+          |> Device.start_elapsed()
 
         stream_ref = :gun.request(conn_pid, method, path, headers, body)
 
-        device = %{device | stream_ref: stream_ref, request_from: request_from, last_ts: ts}
+        device = %{device | stream_ref: stream_ref, request_from: request_from}
         {:noreply, device}
 
       error ->
@@ -93,12 +99,14 @@ defmodule Stressgrid.Generator.GunDevice do
 
   def handle_info(
         :open,
-        %GunDevice{conn_pid: nil, address: {protocol, host, port}, last_ts: nil} = device
+        %GunDevice{conn_pid: nil, address: {protocol, host, port}} = device
       )
       when protocol in [:http, :https] do
     Logger.debug("Open gun #{host}:#{port}")
 
-    ts = :os.system_time(:micro_seconds)
+    device =
+      device
+      |> Device.start_elapsed()
 
     {:ok, conn_pid} =
       :gun.start_link(self(), host |> String.to_charlist(), port, %{
@@ -111,7 +119,7 @@ defmodule Stressgrid.Generator.GunDevice do
     conn_ref = Process.monitor(conn_pid)
     true = Process.unlink(conn_pid)
 
-    {:noreply, %{device | conn_pid: conn_pid, conn_ref: conn_ref, last_ts: ts}}
+    {:noreply, %{device | conn_pid: conn_pid, conn_ref: conn_ref}}
   end
 
   def handle_info(
@@ -124,10 +132,15 @@ defmodule Stressgrid.Generator.GunDevice do
       if stream_ref == nil do
         :ok =
           try do
-            %{socket: socket} = :gun.info(conn_pid)
-            :gun_tcp.setopts(socket, [{:linger, {true, 0}}])
-            :gun_tcp.close(socket)
-            :ok
+            case :gun.info(conn_pid) do
+              %{socket: socket, transport: :tcp} ->
+                :gun_tcp.setopts(socket, [{:linger, {true, 0}}])
+                :gun_tcp.close(socket)
+                :ok
+
+              %{transport: :tls} ->
+                :ok
+            end
           catch
             :exit, {:noproc, {:sys, :get_state, _}} ->
               :ok
@@ -146,28 +159,27 @@ defmodule Stressgrid.Generator.GunDevice do
          stream_ref: nil,
          response_status: nil,
          response_headers: nil,
-         response_iodata: nil,
-         last_ts: nil
+         response_iodata: nil
      }}
   end
 
   def handle_info(
         {:gun_up, conn_pid, _protocol},
         %GunDevice{
-          conn_pid: conn_pid,
-          last_ts: last_ts
+          conn_pid: conn_pid
         } = device
-      )
-      when last_ts != nil do
+      ) do
     Logger.debug("Gun up")
 
-    ts = :os.system_time(:micro_seconds)
+    {conn_us, device} =
+      device
+      |> Device.stop_and_get_elapsed()
 
     {:noreply,
-     %{device | last_ts: nil}
+     device
      |> Device.start_task()
      |> Device.inc_counter("conn_count" |> String.to_atom(), 1)
-     |> Device.record_hist(:conn_us, ts - last_ts)}
+     |> Device.record_hist(:conn_us, conn_us)}
   end
 
   def handle_info(
@@ -188,25 +200,29 @@ defmodule Stressgrid.Generator.GunDevice do
         {:gun_response, conn_pid, stream_ref, is_fin, status, headers},
         %GunDevice{
           conn_pid: conn_pid,
-          stream_ref: stream_ref,
-          last_ts: last_ts
+          stream_ref: stream_ref
         } = device
-      )
-      when last_ts != nil do
-    ts = :os.system_time(:micro_seconds)
+      ) do
+    device = %{device | response_status: status, response_headers: headers, response_iodata: []}
+
+    {headers_us, device} =
+      case is_fin do
+        :nofin ->
+          device
+          |> Device.restart_and_get_elapsed()
+
+        :fin ->
+          device
+          |> complete_request()
+          |> Device.stop_and_get_elapsed()
+      end
 
     device =
-      %{device | response_status: status, response_headers: headers, response_iodata: []}
-      |> Device.record_hist(:headers_us, ts - last_ts)
+      device
+      |> Device.record_hist(:headers_us, headers_us)
       |> Device.inc_counter("response_count" |> String.to_atom(), 1)
 
-    case is_fin do
-      :nofin ->
-        {:noreply, %{device | last_ts: ts}}
-
-      :fin ->
-        {:noreply, device |> complete_request()}
-    end
+    {:noreply, device}
   end
 
   def handle_info(
@@ -214,22 +230,27 @@ defmodule Stressgrid.Generator.GunDevice do
         %GunDevice{
           conn_pid: conn_pid,
           stream_ref: stream_ref,
-          response_iodata: response_iodata,
-          last_ts: last_ts
+          response_iodata: response_iodata
         } = device
-      )
-      when last_ts != nil do
-    ts = :os.system_time(:micro_seconds)
-
+      ) do
     device = %{device | response_iodata: [data | response_iodata]}
 
-    case is_fin do
-      :nofin ->
-        {:noreply, device}
+    device =
+      case is_fin do
+        :nofin ->
+          device
 
-      :fin ->
-        {:noreply, device |> Device.record_hist(:body_us, ts - last_ts) |> complete_request()}
-    end
+        :fin ->
+          {body_us, device} =
+            device
+            |> complete_request()
+            |> Device.stop_and_get_elapsed()
+
+          device
+          |> Device.record_hist(:body_us, body_us)
+      end
+
+    {:noreply, device}
   end
 
   def handle_info(
@@ -329,8 +350,7 @@ defmodule Stressgrid.Generator.GunDevice do
         stream_ref: nil,
         response_status: nil,
         response_headers: nil,
-        response_iodata: nil,
-        last_ts: nil
+        response_iodata: nil
     }
   end
 

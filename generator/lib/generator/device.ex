@@ -9,7 +9,8 @@ defmodule Stressgrid.Generator.Device do
             task: nil,
             script_error: nil,
             hists: %{},
-            counters: %{}
+            counters: %{},
+            last_ts: nil
 
   defmacro __using__(opts) do
     device_functions = opts |> Keyword.fetch!(:device_functions)
@@ -191,7 +192,7 @@ defmodule Stressgrid.Generator.Device do
     %{state | device: %{device | task: task}}
   end
 
-  def do_task_completed(%{device: %Device{task: %Task{ref: task_ref}} = device} = state) do
+  def do_task_completed(%{device: %Device{task: %Task{ref: task_ref}}} = state) do
     Logger.debug("Script exited normally")
 
     true = Process.demonitor(task_ref, [:flush])
@@ -221,7 +222,7 @@ defmodule Stressgrid.Generator.Device do
     _ = Kernel.send(self(), :recycled)
     _ = Process.send_after(self(), :open, if(delay, do: @recycle_delay, else: 0))
 
-    %{state | device: %{device | task: nil}}
+    %{state | device: %{device | task: nil, last_ts: nil}}
   end
 
   def record_hist(%{device: %Device{hists: hists} = device} = state, key, value) do
@@ -249,6 +250,21 @@ defmodule Stressgrid.Generator.Device do
               |> Map.update(key, value, fn c -> c + value end)
         }
     }
+  end
+
+  def start_elapsed(%{device: %Device{last_ts: nil} = device} = state) do
+    %{state | device: %{device | last_ts: :os.system_time(:micro_seconds)}}
+  end
+
+  def stop_and_get_elapsed(%{device: %Device{last_ts: last_ts} = device} = state)
+      when is_integer(last_ts) do
+    {:os.system_time(:micro_seconds) - last_ts, %{state | device: %{device | last_ts: nil}}}
+  end
+
+  def restart_and_get_elapsed(%{device: %Device{last_ts: last_ts} = device} = state)
+      when is_integer(last_ts) do
+    now_ts = :os.system_time(:micro_seconds)
+    {now_ts - last_ts, %{state | device: %{device | last_ts: now_ts}}}
   end
 
   defp add_hists(to_hists, from_hists) do
