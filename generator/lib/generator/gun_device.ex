@@ -15,7 +15,8 @@ defmodule Stressgrid.Generator.GunDevice do
       {DeviceContext,
        [
          delay: 1,
-         delay: 2
+         delay: 2,
+         payload: 1
        ]
        |> Enum.sort()},
     device_macros:
