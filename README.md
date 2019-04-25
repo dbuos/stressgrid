@@ -52,22 +52,22 @@ Once Stressgrid resources are created, you can explicitly add the `stressgrid-ge
 
 ![Stressgrid management website](https://gitlab.com/stressgrid/stressgrid/raw/master/doc/management.gif)
 
-Stressgrid management website is the place to define and run the test plans. There are the following settings.
+The Stressgrid management dashboard is the place to define and run your test plans. The dashboard has the following settings:
 
-- Plan name describes the combination of plan settings and target system, for example, let's say we are testing photo gallery: 10k-browsing-photos-c5-2xlarge would be for simulation of 10k users browsing photos against c5.2xlarge instance.
-- The desired number of devices gets rounded down to the effective number of devices by multiples of ramp step size. Rampup and rampdown happen in discrete steps, and each generator has a fixed number of devices that are started and stopped in each step: 10. Therefore ramp step size is 10 times the number of generators. For example, if we use 100 generators, then the ramp step size will be 1000. We can run tests with the effective number of devices as multiples of 1000.
-- The script defines the behavior we want to simulate. It is written in the [Elixir](https://elixir-lang.org/) programming language. In addition to standard language modules like `Enum`, there are special functions to execute HTTP requests, send UDP datagrams and to delay for a specified period of time.
-- The protocol to be used for testing. Currently supports HTTP(S) and UDP.
-- The target hosts are one or more IP addresses or hostnames to send HTTP requests. When more than one is specified the round-robin strategy is used for load balancing. The target port used for all target hosts.
-- The rampup, sustain and rampdown define the timing parameters of the workload. Rampup and rampdown intervals are divided into the number of discrete steps each one adding or removing device connections. The sustain interval is when the target number of device connections is maintained.
+- **Plan name** describes the combination of plan settings and target system. For example, let's say we are testing a photo gallery: _10k-browsing-photos-c5-2xlarge_ would be a good name a the simulation of 10k users browsing photos against a c5.2xlarge instance.
+- **Desired number of devices** gets rounded down to the **Effective number of devices** by multiples of ramp step size. Rampup and rampdown happen in discrete steps, and each generator has a fixed number of devices that are started and stopped in each step: 10. Therefore, ramp step size is 10 times the number of generators. For example, if we use 100 generators, then the ramp step size will be 1000. We can run tests with the effective number of devices as multiples of 1000.
+- **Script** defines siumation behavior. It is written in the [Elixir](https://elixir-lang.org/) programming language. In addition to standard language modules like `Enum`, there are special functions to execute HTTP requests, send UDP datagrams, and delay execution for a specified period of time.
+- **Protocol** defines the protocol to be used for testing, with current supoprt limited to HTTP(S) and UDP.
+- **Target host(s)** are one or more IP addresses or hostnames where to send the stress load. If there are multiple hosts, the load is balanced amongst them in round-robin fashion. The same **Target port** is used for all target hosts.
+- The **Rampup**, **Sustain**, and **Rampdown** values define the timing parameters of the workload, in seconds. Rampup and rampdown intervals are divided into a number of discrete steps, each one adding or removing device connections. The sustain interval is when the target number of device connections is maintained.
 
 # Building releases
 
-If you are not running in AWS or willing to use Stressgrid's AMIs, you may want to build the coordinator and the generator releases yourself. To build Stressgrid releases you’ll need the following:
+If you are not running in AWS or are unwilling to use Stressgrid's AMIs, you can build the coordinator and the generator releases yourself. To build Stressgrid releases you’ll need the following:
 
 - Elixir 1.7
 - GNU C compiler (for HDR histograms)
-- Node.js 8.12.0 (for management UI)
+- Node.js 8.12.0 (for the management dashboard)
 
 To build the coordinator:
 
