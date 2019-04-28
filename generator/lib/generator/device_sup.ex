@@ -3,7 +3,7 @@ defmodule Stressgrid.Generator.Device.Supervisor do
 
   use DynamicSupervisor
 
-  alias Stressgrid.Generator.{GunDevice, UdpDevice}
+  alias Stressgrid.Generator.{GunDevice, TcpDevice, UdpDevice}
 
   def start_link([]) do
     DynamicSupervisor.start_link(__MODULE__, [])
@@ -24,5 +24,6 @@ defmodule Stressgrid.Generator.Device.Supervisor do
   defp address_module({:https, _, _}), do: GunDevice
   defp address_module({:http2, _, _}), do: GunDevice
   defp address_module({:http2s, _, _}), do: GunDevice
+  defp address_module({:tcp, _, _}), do: TcpDevice
   defp address_module({:udp, _, _}), do: UdpDevice
 end
