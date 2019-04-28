@@ -102,7 +102,7 @@ defmodule Stressgrid.Generator.GunDevice do
         :open,
         %GunDevice{conn_pid: nil, address: {protocol, host, port}} = device
       )
-      when protocol in [:http, :https] do
+      when protocol in [:http, :https, :http2, :http2s] do
     Logger.debug("Open gun #{host}:#{port}")
 
     device =
@@ -451,6 +451,12 @@ defmodule Stressgrid.Generator.GunDevice do
   defp transport(:http), do: :tcp
   defp transport(:https), do: :tls
 
+  defp transport(:http2), do: :tcp
+  defp transport(:http2s), do: :tls
+
   defp protocols(:http), do: [:http]
   defp protocols(:https), do: [:http]
+
+  defp protocols(:http2), do: [:http2]
+  defp protocols(:http2s), do: [:http2]
 end

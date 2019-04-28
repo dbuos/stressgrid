@@ -22,5 +22,7 @@ defmodule Stressgrid.Generator.Device.Supervisor do
 
   defp address_module({:http, _, _}), do: GunDevice
   defp address_module({:https, _, _}), do: GunDevice
+  defp address_module({:http2, _, _}), do: GunDevice
+  defp address_module({:http2s, _, _}), do: GunDevice
   defp address_module({:udp, _, _}), do: UdpDevice
 end

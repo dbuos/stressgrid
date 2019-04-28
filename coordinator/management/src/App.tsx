@@ -137,9 +137,11 @@ class App extends React.Component<IAppProps, IAppState> {
                     <div className="form-group">
                       <label htmlFor="protocol">Protocol</label>
                       <select className="form-control" id="protocol" value={this.state.protocol} onChange={this.updateProtocol}>
-                        <option>http</option>
-                        <option>https</option>
-                        <option>udp</option>
+                        <option value="http">Plain HTTP 1.1</option>
+                        <option value="https">Secure HTTP 1.1</option>
+                        <option value="http2">Plain HTTP 2</option>
+                        <option value="http2s">Secure HTTP 2</option>
+                        <option value="udp">UDP</option>
                       </select>
                     </div>
                   </div>

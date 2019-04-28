@@ -198,6 +198,12 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
       {"protocol", "https"}, acc ->
         acc |> put_elem(0, :https)
 
+      {"protocol", "http2"}, acc ->
+        acc |> put_elem(0, :http2)
+
+      {"protocol", "http2s"}, acc ->
+        acc |> put_elem(0, :http2s)
+
       {"protocol", "udp"}, acc ->
         acc |> put_elem(0, :udp)
 
