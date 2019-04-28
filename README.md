@@ -4,6 +4,12 @@
 
 Stressgrid is a software for load testing at the scale of millions of simulated users.
 
+Stressgrid supports following protocols.
+
+- HTTP 1.1 and 2 (over TLS and plain)
+- TCP
+- UDP
+
 Stressgrid consists of two components: the **generator** and the **coordinator**.
 
 The generator is a horizontally-scalable component that opens connections to a target server farm, generates the workload, and collects metrics.
@@ -56,7 +62,7 @@ The Stressgrid management dashboard is the place to define and run your test pla
 - **Plan name** describes the combination of plan settings and target system. For example, let's say we are testing a photo gallery: _10k-browsing-photos-c5-2xlarge_ would be a good name a the simulation of 10k users browsing photos against a c5.2xlarge instance.
 - **Desired number of devices** gets rounded down to the **Effective number of devices** by multiples of ramp step size. Rampup and rampdown happen in discrete steps, and each generator has a fixed number of devices that are started and stopped in each step: 10. Therefore, ramp step size is 10 times the number of generators. For example, if we use 100 generators, then the ramp step size will be 1000. We can run tests with the effective number of devices as multiples of 1000.
 - **Script** defines siumation behavior. It is written in the [Elixir](https://elixir-lang.org/) programming language. In addition to standard language modules like `Enum`, there are special functions to execute HTTP requests, send and receive TCP data streams and UDP datagrams, and delay execution for a specified period of time.
-- **Protocol** defines the protocol to be used for testing, with current support for HTTP 1.1 and 2 (over TLS and plain), TCP and UDP.
+- **Protocol** defines the protocol to be used for testing.
 - **Target host(s)** are one or more IP addresses or hostnames where to send the stress load. If there are multiple hosts, the load is balanced amongst them in round-robin fashion. The same **Target port** is used for all target hosts.
 - The **Rampup**, **Sustain**, and **Rampdown** values define the timing parameters of the workload, in seconds. Rampup and rampdown intervals are divided into a number of discrete steps, each one adding or removing device connections. The sustain interval is when the target number of device connections is maintained.
 
