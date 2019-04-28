@@ -24,8 +24,7 @@ defmodule Stressgrid.Generator.UdpDevice do
        [
          send: 1,
          recv: 0,
-         recv: 1,
-         probe_recv: 0
+         recv: 1
        ]
        |> Enum.sort()}
 
@@ -57,14 +56,6 @@ defmodule Stressgrid.Generator.UdpDevice do
   def recv(pid, timeout) do
     if Process.alive?(pid) do
       GenServer.call(pid, :receive, timeout)
-    else
-      exit(:device_terminated)
-    end
-  end
-
-  def probe_recv(pid) do
-    if Process.alive?(pid) do
-      GenServer.call(pid, :probe_receive)
     else
       exit(:device_terminated)
     end
@@ -105,14 +96,6 @@ defmodule Stressgrid.Generator.UdpDevice do
         %UdpDevice{waiting_receive_froms: waiting_receive_froms} = device
       ) do
     {:noreply, %{device | waiting_receive_froms: waiting_receive_froms ++ [receive_from]}}
-  end
-
-  def handle_call(
-        :probe_receive,
-        _,
-        %UdpDevice{received_datagrams: datagrams} = device
-      ) do
-    {:reply, {:ok, datagrams}, %{device | received_datagrams: []}}
   end
 
   def handle_info(

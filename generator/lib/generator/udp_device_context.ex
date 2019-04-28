@@ -14,10 +14,4 @@ defmodule Stressgrid.Generator.UdpDeviceContext do
       UdpDevice.recv(var!(device_pid), unquote(timeout))
     end
   end
-
-  defmacro probe_recv() do
-    quote do
-      UdpDevice.probe_recv(var!(device_pid))
-    end
-  end
 end
