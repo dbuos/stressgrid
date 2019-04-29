@@ -3,7 +3,6 @@ defmodule Stressgrid.Generator.GunDevice do
 
   alias Stressgrid.Generator.{
     Device,
-    DeviceContext,
     GunDevice,
     GunDeviceContext
   }
@@ -11,15 +10,7 @@ defmodule Stressgrid.Generator.GunDevice do
   use GenServer
 
   use Device,
-    device_functions:
-      {DeviceContext,
-       [
-         delay: 1,
-         delay: 2,
-         payload: 1
-       ]
-       |> Enum.sort()},
-    device_macros:
+    device_macros: [
       {GunDeviceContext,
        [
          get: 1,
@@ -39,6 +30,7 @@ defmodule Stressgrid.Generator.GunDevice do
          patch: 3
        ]
        |> Enum.sort()}
+    ]
 
   require Logger
 
@@ -86,7 +78,7 @@ defmodule Stressgrid.Generator.GunDevice do
       {:ok, headers, body} ->
         device =
           device
-          |> Device.start_elapsed()
+          |> Device.do_start_timing(:headers)
 
         stream_ref = :gun.request(conn_pid, method, path, headers, body)
 
@@ -107,7 +99,7 @@ defmodule Stressgrid.Generator.GunDevice do
 
     device =
       device
-      |> Device.start_elapsed()
+      |> Device.do_start_timing(:conn)
 
     {:ok, conn_pid} =
       :gun.start_link(self(), host |> String.to_charlist(), port, %{
@@ -172,15 +164,11 @@ defmodule Stressgrid.Generator.GunDevice do
       ) do
     Logger.debug("Gun up")
 
-    {conn_us, device} =
-      device
-      |> Device.stop_and_get_elapsed()
-
     {:noreply,
      device
      |> Device.start_task()
      |> Device.inc_counter("conn_count" |> String.to_atom(), 1)
-     |> Device.record_hist(:conn_us, conn_us)}
+     |> Device.do_stop_timing(:conn)}
   end
 
   def handle_info(
@@ -206,21 +194,20 @@ defmodule Stressgrid.Generator.GunDevice do
       ) do
     device = %{device | response_status: status, response_headers: headers, response_iodata: []}
 
-    {headers_us, device} =
+    device =
       case is_fin do
         :nofin ->
           device
-          |> Device.restart_and_get_elapsed()
+          |> Device.do_stop_start_timing(:headers, :body)
 
         :fin ->
           device
           |> complete_request()
-          |> Device.stop_and_get_elapsed()
+          |> Device.do_stop_timing(:headers)
       end
 
     device =
       device
-      |> Device.record_hist(:headers_us, headers_us)
       |> Device.inc_counter("response_count" |> String.to_atom(), 1)
 
     {:noreply, device}
@@ -242,13 +229,9 @@ defmodule Stressgrid.Generator.GunDevice do
           device
 
         :fin ->
-          {body_us, device} =
-            device
-            |> complete_request()
-            |> Device.stop_and_get_elapsed()
-
           device
-          |> Device.record_hist(:body_us, body_us)
+          |> complete_request()
+          |> Device.do_stop_timing(:body)
       end
 
     {:noreply, device}

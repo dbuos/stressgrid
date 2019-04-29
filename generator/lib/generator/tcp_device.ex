@@ -3,7 +3,6 @@ defmodule Stressgrid.Generator.TcpDevice do
 
   alias Stressgrid.Generator.{
     Device,
-    DeviceContext,
     TcpDevice,
     TcpDeviceContext
   }
@@ -11,15 +10,7 @@ defmodule Stressgrid.Generator.TcpDevice do
   use GenServer
 
   use Device,
-    device_functions:
-      {DeviceContext,
-       [
-         delay: 1,
-         delay: 2,
-         payload: 1
-       ]
-       |> Enum.sort()},
-    device_macros:
+    device_macros: [
       {TcpDeviceContext,
        [
          send: 1,
@@ -27,6 +18,7 @@ defmodule Stressgrid.Generator.TcpDevice do
          recv: 1
        ]
        |> Enum.sort()}
+    ]
 
   require Logger
 

@@ -1,7 +1,7 @@
 defmodule Stressgrid.Generator.Device do
   @moduledoc false
 
-  alias Stressgrid.Generator.{Device}
+  alias Stressgrid.Generator.{Device, DeviceContext}
 
   require Logger
 
@@ -10,11 +10,11 @@ defmodule Stressgrid.Generator.Device do
             script_error: nil,
             hists: %{},
             counters: %{},
-            last_ts: nil
+            last_tss: %{}
 
   defmacro __using__(opts) do
-    device_functions = opts |> Keyword.fetch!(:device_functions)
-    device_macros = opts |> Keyword.fetch!(:device_macros)
+    device_functions = opts |> Keyword.get(:device_functions, [])
+    device_macros = opts |> Keyword.get(:device_macros, [])
 
     quote do
       alias Stressgrid.Generator.{Device}
@@ -26,6 +26,30 @@ defmodule Stressgrid.Generator.Device do
           ) do
         {r, state} = state |> Device.do_collect(to_hists)
         {:reply, r, state}
+      end
+
+      def handle_call(
+            {:start_timing, key},
+            _,
+            state
+          ) do
+        {:reply, :ok, state |> Device.do_start_timing(key)}
+      end
+
+      def handle_call(
+            {:stop_timing, key},
+            _,
+            state
+          ) do
+        {:reply, :ok, state |> Device.do_stop_timing(key)}
+      end
+
+      def handle_call(
+            {:stop_start_timing, stop_key, start_key},
+            _,
+            state
+          ) do
+        {:reply, :ok, state |> Device.do_stop_start_timing(stop_key, start_key)}
       end
 
       def handle_info({:init, id, task_script, task_params}, state) do
@@ -72,6 +96,30 @@ defmodule Stressgrid.Generator.Device do
       GenServer.call(pid, {:collect, to_hists})
     else
       {:ok, nil, false, %{}, %{}}
+    end
+  end
+
+  def start_timing(pid, key) do
+    if Process.alive?(pid) do
+      GenServer.call(pid, {:start_timing, key})
+    else
+      :ok
+    end
+  end
+
+  def stop_timing(pid, key) do
+    if Process.alive?(pid) do
+      GenServer.call(pid, {:stop_timing, key})
+    else
+      :ok
+    end
+  end
+
+  def stop_start_timing(pid, stop_key, start_key) do
+    if Process.alive?(pid) do
+      GenServer.call(pid, {:stop_start_timing, stop_key, start_key})
+    else
+      :ok
     end
   end
 
@@ -139,18 +187,31 @@ defmodule Stressgrid.Generator.Device do
 
     device_pid = self()
 
+    base_device_functions =
+      {DeviceContext,
+       [
+         delay: 1,
+         delay: 2,
+         payload: 1
+       ]
+       |> Enum.sort()}
+
+    base_device_macros =
+      {DeviceContext,
+       [
+         start_timing: 1,
+         stop_timing: 1,
+         stop_start_timing: 1,
+         stop_start_timing: 2
+       ]
+       |> Enum.sort()}
+
     try do
       {task_fn, _} =
         "fn -> #{task_script} end"
         |> Code.eval_string([device_pid: device_pid, params: task_params],
-          functions: [
-            kernel_functions,
-            device_functions
-          ],
-          macros: [
-            kernel_macros,
-            device_macros
-          ]
+          functions: [kernel_functions, base_device_functions] ++ device_functions,
+          macros: [kernel_macros, base_device_macros] ++ device_macros
         )
 
       _ = Kernel.send(self(), :open)
@@ -222,22 +283,7 @@ defmodule Stressgrid.Generator.Device do
     _ = Kernel.send(self(), :recycled)
     _ = Process.send_after(self(), :open, if(delay, do: @recycle_delay, else: 0))
 
-    %{state | device: %{device | task: nil, last_ts: nil}}
-  end
-
-  def record_hist(%{device: %Device{hists: hists} = device} = state, key, value) do
-    {device, hist} =
-      case hists |> Map.get(key) do
-        nil ->
-          hist = make_hist()
-          {%{device | hists: hists |> Map.put(key, hist)}, hist}
-
-        hist ->
-          {device, hist}
-      end
-
-    :hdr_histogram.record(hist, value)
-    %{state | device: device}
+    %{state | device: %{device | task: nil, last_tss: %{}}}
   end
 
   def inc_counter(%{device: %Device{counters: counters} = device} = state, key, value) do
@@ -252,19 +298,54 @@ defmodule Stressgrid.Generator.Device do
     }
   end
 
-  def start_elapsed(%{device: %Device{last_ts: nil} = device} = state) do
-    %{state | device: %{device | last_ts: :os.system_time(:micro_seconds)}}
+  def do_start_timing(%{device: %Device{last_tss: last_tss} = device} = state, key)
+      when is_atom(key) do
+    %{
+      state
+      | device: %{device | last_tss: last_tss |> Map.put(key, :os.system_time(:micro_seconds))}
+    }
   end
 
-  def stop_and_get_elapsed(%{device: %Device{last_ts: last_ts} = device} = state)
-      when is_integer(last_ts) do
-    {:os.system_time(:micro_seconds) - last_ts, %{state | device: %{device | last_ts: nil}}}
+  def do_stop_timing(%{device: %Device{last_tss: last_tss} = device} = state, key)
+      when is_atom(key) do
+    {last_ts, last_tss} =
+      last_tss
+      |> Map.pop(key)
+
+    %{state | device: %{device | last_tss: last_tss}}
+    |> record_hist(:"#{key}_us", :os.system_time(:micro_seconds) - last_ts)
   end
 
-  def restart_and_get_elapsed(%{device: %Device{last_ts: last_ts} = device} = state)
-      when is_integer(last_ts) do
+  def do_stop_start_timing(
+        %{device: %Device{last_tss: last_tss} = device} = state,
+        stop_key,
+        start_key
+      )
+      when is_atom(stop_key) and is_atom(start_key) do
     now_ts = :os.system_time(:micro_seconds)
-    {now_ts - last_ts, %{state | device: %{device | last_ts: now_ts}}}
+
+    {last_ts, last_tss} =
+      last_tss
+      |> Map.put(start_key, now_ts)
+      |> Map.pop(stop_key)
+
+    %{state | device: %{device | last_tss: last_tss}}
+    |> record_hist(:"#{stop_key}_us", now_ts - last_ts)
+  end
+
+  defp record_hist(%{device: %Device{hists: hists} = device} = state, key, value) do
+    {device, hist} =
+      case hists |> Map.get(key) do
+        nil ->
+          hist = make_hist()
+          {%{device | hists: hists |> Map.put(key, hist)}, hist}
+
+        hist ->
+          {device, hist}
+      end
+
+    :hdr_histogram.record(hist, value)
+    %{state | device: device}
   end
 
   defp add_hists(to_hists, from_hists) do
