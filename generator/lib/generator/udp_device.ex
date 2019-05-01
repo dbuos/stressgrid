@@ -56,12 +56,12 @@ defmodule Stressgrid.Generator.UdpDevice do
   def handle_call(
         {:send, datagram},
         _,
-        %UdpDevice{address: {:udp, host, port}, socket: socket} = device
+        %UdpDevice{address: {:udp, ip, port}, socket: socket} = device
       ) do
-    Logger.debug("Sending UDP datagram to #{host}:#{port}")
+    Logger.debug("Sending UDP datagram to #{:inet.ntoa(ip)}:#{port}")
 
     device =
-      case :gen_udp.send(socket, host |> String.to_charlist(), port, datagram) do
+      case :gen_udp.send(socket, ip, port, datagram) do
         :ok ->
           device
           |> Device.inc_counter("datagram_count" |> String.to_atom(), 1)
@@ -122,7 +122,7 @@ defmodule Stressgrid.Generator.UdpDevice do
   end
 
   def handle_info(
-        {:udp, socket, host, port, datagram},
+        {:udp, socket, ip, port, datagram},
         %UdpDevice{
           socket: socket,
           waiting_receive_froms: [],
@@ -130,22 +130,22 @@ defmodule Stressgrid.Generator.UdpDevice do
         } = device
       ) do
     if length(received_datagrams) > @max_received_datagrams do
-      Logger.debug("Discarded UDP datagram from #{:inet.ntoa(host)}:#{port}")
+      Logger.debug("Discarded UDP datagram from #{:inet.ntoa(ip)}:#{port}")
 
       {:noreply, device}
     else
-      Logger.debug("Received UDP datagram from #{:inet.ntoa(host)}:#{port}")
+      Logger.debug("Received UDP datagram from #{:inet.ntoa(ip)}:#{port}")
 
       {:noreply, %{device | received_datagrams: received_datagrams ++ [datagram]}}
     end
   end
 
   def handle_info(
-        {:udp, socket, host, port, datagram},
+        {:udp, socket, ip, port, datagram},
         %UdpDevice{socket: socket, waiting_receive_froms: [receive_from | waiting_receive_froms]} =
           device
       ) do
-    Logger.debug("Received UDP datagram from #{:inet.ntoa(host)}:#{port} for waiting receive")
+    Logger.debug("Received UDP datagram from #{:inet.ntoa(ip)}:#{port} for waiting receive")
     GenServer.reply(receive_from, {:ok, datagram})
     {:noreply, %{device | waiting_receive_froms: waiting_receive_froms}}
   end

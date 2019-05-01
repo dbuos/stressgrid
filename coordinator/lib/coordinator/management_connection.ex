@@ -109,14 +109,22 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
       addresses_json
       |> Enum.reduce([], fn address_json, acc ->
         case parse_address_json(address_json) do
-          {_, host, _} = address when is_binary(host) ->
-            [address | acc]
+          {protocol, host, port} when is_binary(host) ->
+            case :inet.gethostbyname(host |> String.to_charlist()) do
+              {:ok, {:hostent, _, _, _, _, ips}} ->
+                ips
+                |> Enum.map(fn ip -> {protocol, ip, port} end)
+                |> Enum.concat(acc)
+
+              _ ->
+                acc
+            end
 
           _ ->
             acc
         end
       end)
-      |> Enum.reverse()
+      |> Enum.uniq()
 
     :ok = Scheduler.start_run(plan_name, blocks, addresses, opts)
 

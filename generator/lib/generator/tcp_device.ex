@@ -107,12 +107,12 @@ defmodule Stressgrid.Generator.TcpDevice do
 
   def handle_info(
         :open,
-        %TcpDevice{address: {:tcp, host, port}} = device
+        %TcpDevice{address: {:tcp, ip, port}} = device
       ) do
-    Logger.debug("Open TCP socket")
+    Logger.debug("Open TCP socket #{:inet.ntoa(ip)}:#{port}")
 
     device =
-      case :gen_tcp.connect(host |> String.to_charlist(), port, [{:mode, :binary}]) do
+      case :gen_tcp.connect(ip, port, [{:mode, :binary}]) do
         {:ok, socket} ->
           %{device | socket: socket} |> Device.start_task()
 

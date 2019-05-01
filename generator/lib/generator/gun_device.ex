@@ -92,17 +92,17 @@ defmodule Stressgrid.Generator.GunDevice do
 
   def handle_info(
         :open,
-        %GunDevice{conn_pid: nil, address: {protocol, host, port}} = device
+        %GunDevice{conn_pid: nil, address: {protocol, ip, port}} = device
       )
       when protocol in [:http, :https, :http2, :http2s] do
-    Logger.debug("Open gun #{host}:#{port}")
+    Logger.debug("Open gun #{:inet.ntoa(ip)}:#{port}")
 
     device =
       device
       |> Device.do_start_timing(:conn)
 
     {:ok, conn_pid} =
-      :gun.start_link(self(), host |> String.to_charlist(), port, %{
+      :gun.start_link(self(), ip, port, %{
         retry: 0,
         transport: transport(protocol),
         protocols: protocols(protocol),
