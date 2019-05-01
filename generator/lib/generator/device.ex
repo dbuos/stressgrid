@@ -220,12 +220,7 @@ defmodule Stressgrid.Generator.Device do
         state
         | device: %{
             device
-            | task_fn: task_fn,
-              hists: %{
-                conn_us: make_hist(),
-                headers_us: make_hist(),
-                body_us: make_hist()
-              }
+            | task_fn: task_fn
           }
       }
     catch
