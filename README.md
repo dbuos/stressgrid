@@ -1,4 +1,4 @@
-[![Telegram](https://img.shields.io/badge/telegram-join%20group-0088CC.svg)](https://t.me/joinchat/Lx57txRJiNi1ciJuxKFFgg)
+[![Slack](https://slack.stressgrid.com/badge.svg)](https://slack.stressgrid.com)
 
 # Overview
 
