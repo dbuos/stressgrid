@@ -1,0 +1,39 @@
+before_script:
+  - mix local.hex --force
+  - mix local.rebar --force
+
+build_coordinator:
+  stage: build
+  tags:
+    - stressgrid
+  variables:
+    MIX_ENV: prod
+  script:
+    - pushd coordinator/management/
+    - npm install
+    - npm run build-css
+    - npm run build
+    - popd
+    - pushd coordinator/
+    - mix deps.get
+    - mix release
+    - popd
+  artifacts:
+    paths:
+      - coordinator/_build/prod/rel/coordinator/releases/*/coordinator.tar.gz
+
+build_generator:
+  stage: build
+  tags:
+    - stressgrid
+  variables:
+    MIX_ENV: prod
+  script:
+    - pushd generator/
+    - mix deps.get
+    - mix release
+    - popd
+  artifacts:
+    paths:
+      - generator/_build/prod/rel/generator/releases/*/generator.tar.gz
+
