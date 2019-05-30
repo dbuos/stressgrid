@@ -1,4 +1,4 @@
--name <%=release_name%>
+-sname <%=release_name%>
 -setcookie <%=release.profile.cookie%>
 +P 16777216
 +Q 16777216
