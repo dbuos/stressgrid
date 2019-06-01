@@ -37,3 +37,13 @@ build_generator:
     paths:
       - generator/_build/prod/rel/generator/releases/*/generator.tar.gz
 
+build_client:
+  stage: build
+  tags:
+    - stressgrid
+  script:
+    - pushd client/
+    - npm install
+    - npm run build
+    - popd
+
