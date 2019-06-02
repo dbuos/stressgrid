@@ -70,7 +70,7 @@ The Stressgrid management dashboard is the place to define and run your test pla
 
 ## Using `sgcli`
 
-Alternatively you can use `sgcli` command line interface. `sgcli run` command will start the run according to the plan specified in arguments. (See `sgcli --help` and `sgcli run --help` for details.) It will then continuously print the telemetry until the run is complete or aborted by pressing ^C. Finally it will output the URL to the results archive. (You can use 'wget $(sgcli ...)' to have it downloaded.) `sgcli` will return -1 if errors occured during the run and 0 otherwise.  
+Alternatively you can use `sgcli` command line interface. `sgcli run` command will start the run according to the plan specified in arguments. (See `sgcli --help` and `sgcli run --help` for details.) It will then continuously print the telemetry until the run is complete or aborted by pressing ^C. Finally it will output the URL to the results archive. (You can use `wget $(sgcli ...)` to have it downloaded.) `sgcli` will return -1 if errors occured during the run and 0 otherwise.  
 
 # Building releases
 
