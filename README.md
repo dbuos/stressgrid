@@ -55,6 +55,8 @@ Once Stressgrid resources are created, you can explicitly add the `stressgrid-ge
 
 # Running tests
 
+## Using management website
+
 ![Stressgrid management website](https://gitlab.com/stressgrid/stressgrid/raw/master/doc/management.gif)
 
 The Stressgrid management dashboard is the place to define and run your test plans. The dashboard has the following settings:
@@ -66,13 +68,17 @@ The Stressgrid management dashboard is the place to define and run your test pla
 - **Target host(s)** are one or more IP addresses or hostnames where to send the stress load. If there are multiple hosts, the load is balanced amongst them in round-robin fashion. The same **Target port** is used for all target hosts.
 - The **Rampup**, **Sustain**, and **Rampdown** values define the timing parameters of the workload, in seconds. Rampup and rampdown intervals are divided into a number of discrete steps, each one adding or removing device connections. The sustain interval is when the target number of device connections is maintained.
 
+## Using `sgcli`
+
+Alternatively you can use `sgcli` command line interface. `sgcli run` command will start the run according to the plan specified in arguments. (See `sgcli --help` and `sgcli run --help` for details.) It will then continuously print the telemetry until the run is complete or aborted by pressing ^C. Finally it will output the URL to the results archive. (You can use 'wget $(sgcli ...)' to have it downloaded.) `sgcli` will return -1 if errors occured during the run and 0 otherwise.  
+
 # Building releases
 
 If you are not running in AWS or are unwilling to use Stressgrid's AMIs, you can build the coordinator and the generator releases yourself. To build Stressgrid releases you’ll need the following:
 
 - Elixir 1.7
 - GNU C compiler (for HDR histograms)
-- Node.js 8.12.0 (for the management dashboard)
+- Node.js 8.16.0 (for the management dashboard and the CLI)
 
 To build the coordinator:
 
@@ -88,6 +94,15 @@ To build the generator:
     $ MIX_ENV=prod mix deps.get
     $ MIX_ENV=prod mix release
 
+To build the `sgcli` command line interface:
+
+    $ cd client/
+    $ npm install && npm run build
+
+To install the `sgcli` command locally:
+
+    $ cd client/
+    $ sudo npm link
 
 # Running the coordinator
 
