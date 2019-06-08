@@ -1,17 +1,12 @@
-import * as _ from 'lodash';
-
-import reportsStore from './stores/ReportsStore';
-import runStore from './stores/RunStore';
-import telemetryStore from './stores/TelemetryStore';
-
+import _ from 'lodash';
 import ReconnectingWebSocket from 'reconnecting-websocket';
 
-interface IScriptError {
+export interface IScriptError {
   description: string;
   line: number;
 }
 
-interface ITelemetry {
+export interface ITelemetry {
   cpu: number[];
   network_rx: number[];
   network_tx: number[];
@@ -21,19 +16,19 @@ interface ITelemetry {
   generator_count: number[];
 }
 
-interface IRun {
+export interface IRun {
   id: string;
   name: string;
   state: string;
   remaining_ms: number;
 }
 
-interface IResult {
+export interface IResult {
   csv_url?: string;
   cw_url?: string;
 }
 
-interface IReport {
+export interface IReport {
   id: string;
   name: string;
   errors?: Map<string, number[]>;
@@ -45,42 +40,42 @@ interface IReport {
   result: IResult;
 }
 
-interface IInit {
+export interface IInit {
   reports: IReport[];
   grid: IGrid;
 }
 
-interface IGrid {
+export interface IGrid {
   telemetry: ITelemetry;
   run: IRun | null;
 }
 
-interface INotify {
+export interface INotify {
   grid_changed?: IGrid;
   report_added?: IReport;
   report_removed?: { id: string };
 }
 
-interface IBlock {
+export interface IBlock {
   script?: string;
   params?: object;
   size?: number;
 }
 
-interface IAddress {
+export interface IAddress {
   host: string;
   port?: number;
   protocol?: string;
 }
 
-interface IOpts {
+export interface IOpts {
   ramp_steps?: number;
   rampup_step_ms?: number;
   sustain_ms?: number;
   rampdown_step_ms?: number;
 }
 
-interface IRunPlan {
+export interface IRunPlan {
   name: string;
   blocks: IBlock[];
   addresses: IAddress[];
@@ -88,27 +83,50 @@ interface IRunPlan {
   script?: string;
 }
 
-interface IRemoveReport {
+export interface IRemoveReport {
   id: string;
 }
 
-interface IMessage {
+export interface IMessage {
   init?: IInit;
   notify?: INotify;
   run_plan?: IRunPlan;
   remove_report?: IRemoveReport;
 }
 
-export class Ws {
-  private ws: ReconnectingWebSocket;
+export interface IStressgridEvents {
+  init(grid: IGrid, reports: IReport[]): void;
+  updateGrid(grid: IGrid): void;
+  addReport(report: IReport): void;
+  deleteReport(id: string): void;
+  disconnected(): void;
+}
 
-  public connect(wsUrl: string) {
-    this.ws = new ReconnectingWebSocket(wsUrl);
+export class Stressgrid {
+  private ws: ReconnectingWebSocket;
+  private events: IStressgridEvents;
+
+  constructor(events: IStressgridEvents) {
+    this.events = events;
+  }
+
+  public connect(wsUrl: string, WebSocket?: any) {
+    this.ws = new ReconnectingWebSocket(wsUrl, [], {
+      WebSocket
+    });
     this.ws.onmessage = (e) => {
       _.each(JSON.parse(e.data), (message: IMessage) => {
         this.handle(message);
       });
     }
+    this.ws.onclose = (e) => {
+      this.events.disconnected();
+    }
+  }
+
+  public disconnect() {
+    this.ws.close();
+    this.ws.onmessage = undefined;
   }
 
   public run(runPlan: IRunPlan) {
@@ -118,7 +136,7 @@ export class Ws {
   }
 
   public abortRun() {
-    this.send(["abort_run"]);
+    this.send(['abort_run']);
   }
 
   public removeReport(id: string) {
@@ -133,67 +151,21 @@ export class Ws {
     this.ws.send(JSON.stringify(messages));
   }
 
-  private updateGrid(g: IGrid) {
-    const t = g.telemetry;
-    telemetryStore.update(
-      t.last_script_error ? t.last_script_error.description : null,
-      t.last_errors ? t.last_errors : null,
-      t.cpu,
-      t.network_rx,
-      t.network_tx,
-      t.active_count,
-      t.generator_count);
-    if (g.run) {
-      const r = g.run;
-      runStore.update(
-        r.id,
-        r.name,
-        r.state,
-        r.remaining_ms
-      );
-    }
-    else {
-      runStore.clear();
-    }
-  }
-
-  private addReport(r: IReport) {
-    reportsStore.addReport(r.id,
-      {
-        csvUrl: r.result.csv_url,
-        cwUrl: r.result.cw_url,
-        hasNonScriptErrors: !!r.errors,
-        hasScriptErrors: !!r.script_error,
-        maxCpu: r.max_cpu,
-        maxNetworkRx: r.max_network_rx,
-        maxNetworkTx: r.max_network_tx,
-        name: r.name
-      });
-  }
-
   private handle(message: IMessage) {
     const { init, notify } = message;
     if (init) {
-      telemetryStore.clear();
-      runStore.clear();
-      reportsStore.clear();
-
-      this.updateGrid(init.grid);
-      _.forEach(init.reports, r => this.addReport(r));
+      this.events.init(init.grid, init.reports);
     }
     if (notify) {
       if (notify.grid_changed) {
-        this.updateGrid(notify.grid_changed);
+        this.events.updateGrid(notify.grid_changed);
       }
       if (notify.report_added) {
-        this.addReport(notify.report_added);
+        this.events.addReport(notify.report_added);
       }
       if (notify.report_removed) {
-        reportsStore.deleteReport(notify.report_removed.id);
+        this.events.deleteReport(notify.report_removed.id);
       }
     }
   }
 }
-
-const ws = new Ws();
-export default ws;

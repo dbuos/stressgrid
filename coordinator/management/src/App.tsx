@@ -9,7 +9,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { ReportsStore } from './stores/ReportsStore'
 import { RunStore } from './stores/RunStore'
 import { TelemetryStore } from './stores/TelemetryStore'
-import { Ws } from './Ws';
+
+import { Stressgrid } from './Stressgrid';
 
 const defaultScript = `0..100 |> Enum.each(fn _ ->
   get("/")
@@ -40,7 +41,7 @@ interface IAppProps {
   telemetryStore?: TelemetryStore;
   runStore?: RunStore;
   reportsStore?: ReportsStore;
-  ws?: Ws;
+  sg?: Stressgrid;
 }
 
 interface IAppState {
@@ -62,7 +63,7 @@ interface IAppState {
 @inject('telemetryStore')
 @inject('runStore')
 @inject('reportsStore')
-@inject('ws')
+@inject('sg')
 @observer
 class App extends React.Component<IAppProps, IAppState> {
   constructor(props: IAppProps) {
@@ -400,12 +401,12 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   private runPlan = (event: React.SyntheticEvent<HTMLButtonElement>) => {
-    const { telemetryStore, ws } = this.props;
-    if (ws && telemetryStore) {
+    const { telemetryStore, sg } = this.props;
+    if (sg && telemetryStore) {
       if (this.state.advanced) {
         const json = this.state.json;
         try {
-          ws.run(JSON.parse(json));
+          sg.run(JSON.parse(json));
         }
         catch (e) {
           this.setState({ error: e.toString() });
@@ -415,7 +416,7 @@ class App extends React.Component<IAppProps, IAppState> {
         try {
           const name = this.state.name;
           const port = this.state.port;
-          const protocol = this.state.protocol;          
+          const protocol = this.state.protocol;
           const size = telemetryStore.size;
           const rampSteps = telemetryStore.rampSteps;
           const rampdownStepMs = (this.state.rampdownSecs * 1000) / rampSteps;
@@ -428,7 +429,7 @@ class App extends React.Component<IAppProps, IAppState> {
           if (rampdownStepMs <= 0) { throw new Error('Rampdown duration is invalid'); }
           if (rampupStepMs <= 0) { throw new Error('Ramup duration is invalid'); }
           if (sustainMs <= 0) { throw new Error('Sustain duration is invalid'); }
-          ws.run({
+          sg.run({
             addresses: _.map(_.split(this.state.host, ","), host => {
               return {
                 host: _.trim(host),
@@ -460,17 +461,17 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   private abortRun = (event: React.SyntheticEvent<HTMLButtonElement>) => {
-    const { ws } = this.props;
-    if (ws) {
-      ws.abortRun();
+    const { sg } = this.props;
+    if (sg) {
+      sg.abortRun();
     }
   }
 
   private removeReport = (event: React.SyntheticEvent<HTMLButtonElement>) => {
-    const { ws } = this.props;
+    const { sg } = this.props;
     const id = event.currentTarget.dataset.id
-    if (ws && id) {
-      ws.removeReport(id);
+    if (sg && id) {
+      sg.removeReport(id);
     }
   }
 }
