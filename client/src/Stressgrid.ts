@@ -1,6 +1,5 @@
 import _ from 'lodash';
 import ReconnectingWebSocket from 'reconnecting-websocket';
-import WS from 'ws';
 
 export interface IScriptError {
   description: string;
@@ -111,9 +110,9 @@ export class Stressgrid {
     this.events = events;
   }
 
-  public connect(wsUrl: string) {
+  public connect(wsUrl: string, WebSocket?: any) {
     this.ws = new ReconnectingWebSocket(wsUrl, [], {
-      WebSocket: WS
+      WebSocket
     });
     this.ws.onmessage = (e) => {
       _.each(JSON.parse(e.data), (message: IMessage) => {

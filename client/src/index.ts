@@ -6,6 +6,7 @@ import fs from 'fs';
 import log from 'single-line-log';
 import chalk from 'chalk';
 import filesize from 'filesize';
+import WS from 'ws';
 import { Stressgrid, IRunPlan } from './Stressgrid'
 
 program
@@ -125,7 +126,7 @@ function runPlan(coordinatorHost: string, plan: IRunPlan) {
       process.exit(result);
     }
   });
-  sg.connect('ws://' + coordinatorHost + ':8000/ws');
+  sg.connect('ws://' + coordinatorHost + ':8000/ws', WS);
   process.on('SIGINT', function () {
     log.stderr.clear();
     console.error(chalk.red('ABORTED'));
