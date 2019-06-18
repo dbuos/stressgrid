@@ -157,7 +157,3 @@ Example for the generator:
     #!/bin/bash
     echo "COORDINATOR_URL=ws://ip-172-31-22-7.us-west-1.compute.internal:9696" > /etc/default/stressgrid-generator.env
     service stressgrid-generator restart
-
-# Getting help
-
-We’re monitoring the [Stressgrid Telegram group](https://t.me/joinchat/Lx57txRJiNi1ciJuxKFFgg) and [#stressgrid on Freenode](irc:freenode.net/channel/stressgrid), if you have any questions.
