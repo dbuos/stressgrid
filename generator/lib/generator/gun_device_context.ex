@@ -44,4 +44,10 @@ defmodule Stressgrid.Generator.GunDeviceContext do
       GunDevice.request(var!(device_pid), "DELETE", unquote(path), unquote(headers), "")
     end
   end
+
+  defmacro ws_upgrade(path, headers \\ []) do
+    quote do
+      GunDevice.ws_upgrade(var!(device_pid), unquote(path), unquote(headers))
+    end
+  end
 end

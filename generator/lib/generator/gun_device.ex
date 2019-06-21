@@ -27,7 +27,9 @@ defmodule Stressgrid.Generator.GunDevice do
          put: 3,
          patch: 1,
          patch: 2,
-         patch: 3
+         patch: 3,
+         ws_upgrade: 1,
+         ws_upgrade: 2
        ]
        |> Enum.sort()}
     ]
@@ -41,7 +43,8 @@ defmodule Stressgrid.Generator.GunDevice do
             stream_ref: nil,
             response_status: nil,
             response_headers: nil,
-            response_iodata: nil
+            response_iodata: nil,
+            ws_upgraded: false
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
@@ -63,12 +66,28 @@ defmodule Stressgrid.Generator.GunDevice do
     end
   end
 
+  def ws_upgrade(pid, path, headers) when is_map(headers) do
+    ws_upgrade(pid, path, headers |> Map.to_list())
+  end
+
+  def ws_upgrade(pid, path, headers) when is_list(headers) do
+    if Process.alive?(pid) do
+      GenServer.call(pid, {:ws_upgrade, path, headers})
+    else
+      exit(:device_terminated)
+    end
+  end
+
   def handle_call(call, from, %GunDevice{conn_pid: nil} = device) do
     device =
       device
       |> connect()
 
     handle_call(call, from, device)
+  end
+
+  def handle_call({:request, _, _, _, _}, _, %GunDevice{ws_upgraded: true} = device) do
+    {:reply, {:error, :ws_upgraded}, device}
   end
 
   def handle_call(
@@ -101,6 +120,36 @@ defmodule Stressgrid.Generator.GunDevice do
       error ->
         {:reply, error, device}
     end
+  end
+
+  def handle_call({:ws_upgrade, _, _}, _, %GunDevice{ws_upgraded: true} = device) do
+    {:reply, {:error, :already_ws_upgraded}, device}
+  end
+
+  def handle_call(
+        {:ws_upgrade, path, headers},
+        request_from,
+        %GunDevice{
+          address: {_, _, _, host},
+          conn_pid: conn_pid,
+          stream_ref: nil,
+          request_from: nil
+        } = device
+      ) do
+    Logger.debug("Starting websocket upgrade #{path}")
+
+    device =
+      device
+      |> Device.do_start_timing(:ws_upgrade)
+
+    headers =
+      headers
+      |> add_host_to_headers(host)
+
+    stream_ref = :gun.ws_upgrade(conn_pid, path, headers)
+
+    device = %{device | stream_ref: stream_ref, request_from: request_from}
+    {:noreply, device}
   end
 
   def handle_info(
@@ -227,6 +276,30 @@ defmodule Stressgrid.Generator.GunDevice do
      device
      |> Device.recycle()
      |> Device.inc_counter(reason |> gun_reason_to_key(), 1)}
+  end
+
+  def handle_info(
+        {:gun_upgrade, conn_pid, stream_ref, ["websocket"], response_headers},
+        %GunDevice{stream_ref: stream_ref, conn_pid: conn_pid, request_from: request_from} =
+          device
+      ) do
+    Logger.debug("Websocket upgrade succeeded")
+
+    device =
+      %{
+        device
+        | request_from: nil,
+          stream_ref: nil,
+          ws_upgraded: true
+      }
+      |> Device.do_stop_timing(:ws_upgrade)
+
+    GenServer.reply(
+      request_from,
+      {:ok, response_headers}
+    )
+
+    {:noreply, device}
   end
 
   def handle_info(
