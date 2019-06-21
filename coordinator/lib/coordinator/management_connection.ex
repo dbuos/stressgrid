@@ -113,7 +113,7 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
             case :inet.gethostbyname(host |> String.to_charlist()) do
               {:ok, {:hostent, _, _, _, _, ips}} ->
                 ips
-                |> Enum.map(fn ip -> {protocol, ip, port} end)
+                |> Enum.map(fn ip -> {protocol, ip, port, host} end)
                 |> Enum.concat(acc)
 
               _ ->

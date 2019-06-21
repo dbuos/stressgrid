@@ -107,7 +107,7 @@ defmodule Stressgrid.Generator.TcpDevice do
 
   def handle_info(
         :open,
-        %TcpDevice{address: {:tcp, ip, port}} = device
+        %TcpDevice{address: {:tcp, ip, port, _}} = device
       ) do
     Logger.debug("Open TCP socket #{:inet.ntoa(ip)}:#{port}")
 

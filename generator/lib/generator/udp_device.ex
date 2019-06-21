@@ -56,7 +56,7 @@ defmodule Stressgrid.Generator.UdpDevice do
   def handle_call(
         {:send, datagram},
         _,
-        %UdpDevice{address: {:udp, ip, port}, socket: socket} = device
+        %UdpDevice{address: {:udp, ip, port, _}, socket: socket} = device
       ) do
     Logger.debug("Sending UDP datagram to #{:inet.ntoa(ip)}:#{port}")
 

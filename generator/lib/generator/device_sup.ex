@@ -20,10 +20,10 @@ defmodule Stressgrid.Generator.Device.Supervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  defp address_module({:http, _, _}), do: GunDevice
-  defp address_module({:https, _, _}), do: GunDevice
-  defp address_module({:http2, _, _}), do: GunDevice
-  defp address_module({:http2s, _, _}), do: GunDevice
-  defp address_module({:tcp, _, _}), do: TcpDevice
-  defp address_module({:udp, _, _}), do: UdpDevice
+  defp address_module({:http, _, _, _}), do: GunDevice
+  defp address_module({:https, _, _, _}), do: GunDevice
+  defp address_module({:http2, _, _, _}), do: GunDevice
+  defp address_module({:http2s, _, _, _}), do: GunDevice
+  defp address_module({:tcp, _, _, _}), do: TcpDevice
+  defp address_module({:udp, _, _, _}), do: UdpDevice
 end

@@ -70,7 +70,12 @@ defmodule Stressgrid.Generator.GunDevice do
   def handle_call(
         {:request, method, path, headers, body},
         request_from,
-        %GunDevice{conn_pid: conn_pid, stream_ref: nil, request_from: nil} = device
+        %GunDevice{
+          address: {_, _, _, host},
+          conn_pid: conn_pid,
+          stream_ref: nil,
+          request_from: nil
+        } = device
       ) do
     Logger.debug("Starting request #{method} #{path}")
 
@@ -79,6 +84,10 @@ defmodule Stressgrid.Generator.GunDevice do
         device =
           device
           |> Device.do_start_timing(:headers)
+
+        headers =
+          headers
+          |> add_host_to_headers(host)
 
         stream_ref = :gun.request(conn_pid, method, path, headers, body)
 
@@ -92,10 +101,19 @@ defmodule Stressgrid.Generator.GunDevice do
 
   def handle_info(
         :open,
-        %GunDevice{conn_pid: nil, address: {protocol, ip, port}} = device
+        %GunDevice{conn_pid: nil, address: {protocol, ip, port, host}} = device
       )
       when protocol in [:http, :https, :http2, :http2s] do
     Logger.debug("Open gun #{:inet.ntoa(ip)}:#{port}")
+
+    transport_opts =
+      case protocol do
+        :tls ->
+          [server_name_indication: host |> String.to_charlist()]
+
+        _ ->
+          []
+      end
 
     device =
       device
@@ -106,7 +124,8 @@ defmodule Stressgrid.Generator.GunDevice do
         retry: 0,
         transport: transport(protocol),
         protocols: protocols(protocol),
-        http_opts: %{keepalive: :infinity}
+        http_opts: %{keepalive: :infinity},
+        transport_opts: transport_opts
       })
 
     conn_ref = Process.monitor(conn_pid)
@@ -429,6 +448,16 @@ defmodule Stressgrid.Generator.GunDevice do
       error ->
         error
     end
+  end
+
+  def add_host_to_headers(headers, host) do
+    headers
+    |> Enum.reject(fn
+      {"host", _} -> true
+      {"Host", _} -> true
+      _ -> false
+    end)
+    |> Enum.concat([{"host", host}])
   end
 
   defp transport(:http), do: :tcp
