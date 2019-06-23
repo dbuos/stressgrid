@@ -63,8 +63,12 @@ defmodule Stressgrid.Generator.GunDevice do
     end
   end
 
-  def handle_call({:request, _, _, _, _}, _, %GunDevice{conn_pid: nil} = device) do
-    {:reply, {:error, :disconnected}, device}
+  def handle_call(call, from, %GunDevice{conn_pid: nil} = device) do
+    device =
+      device
+      |> connect()
+
+    handle_call(call, from, device)
   end
 
   def handle_call(
@@ -100,82 +104,6 @@ defmodule Stressgrid.Generator.GunDevice do
   end
 
   def handle_info(
-        :open,
-        %GunDevice{conn_pid: nil, address: {protocol, ip, port, host}} = device
-      )
-      when protocol in [:http, :https, :http2, :http2s] do
-    Logger.debug("Open gun #{:inet.ntoa(ip)}:#{port}")
-
-    transport_opts =
-      case protocol do
-        :tls ->
-          [server_name_indication: host |> String.to_charlist()]
-
-        _ ->
-          []
-      end
-
-    device =
-      device
-      |> Device.do_start_timing(:conn)
-
-    {:ok, conn_pid} =
-      :gun.start_link(self(), ip, port, %{
-        retry: 0,
-        transport: transport(protocol),
-        protocols: protocols(protocol),
-        http_opts: %{keepalive: :infinity},
-        transport_opts: transport_opts
-      })
-
-    conn_ref = Process.monitor(conn_pid)
-    true = Process.unlink(conn_pid)
-
-    {:noreply, %{device | conn_pid: conn_pid, conn_ref: conn_ref}}
-  end
-
-  def handle_info(
-        :recycled,
-        %GunDevice{conn_pid: conn_pid, conn_ref: conn_ref, stream_ref: stream_ref} = device
-      ) do
-    if conn_ref != nil do
-      true = Process.demonitor(conn_ref, [:flush])
-
-      if stream_ref == nil do
-        :ok =
-          try do
-            case :gun.info(conn_pid) do
-              %{socket: socket, transport: :tcp} ->
-                :gun_tcp.setopts(socket, [{:linger, {true, 0}}])
-                :gun_tcp.close(socket)
-                :ok
-
-              %{transport: :tls} ->
-                :ok
-            end
-          catch
-            :exit, {:noproc, {:sys, :get_state, _}} ->
-              :ok
-          end
-      end
-
-      _ = :gun.shutdown(conn_pid)
-    end
-
-    {:noreply,
-     %{
-       device
-       | conn_pid: nil,
-         conn_ref: nil,
-         request_from: nil,
-         stream_ref: nil,
-         response_status: nil,
-         response_headers: nil,
-         response_iodata: nil
-     }}
-  end
-
-  def handle_info(
         {:gun_up, conn_pid, _protocol},
         %GunDevice{
           conn_pid: conn_pid
@@ -185,9 +113,25 @@ defmodule Stressgrid.Generator.GunDevice do
 
     {:noreply,
      device
-     |> Device.start_task()
      |> Device.inc_counter("conn_count" |> String.to_atom(), 1)
      |> Device.do_stop_timing(:conn)}
+  end
+
+  def handle_info(
+        {:gun_down, conn_pid, _, :closed, _, _},
+        %GunDevice{
+          conn_pid: conn_pid,
+          conn_ref: conn_ref,
+          stream_ref: nil
+        } = device
+      ) do
+    Logger.debug("Gun down with closed")
+
+    true = Process.demonitor(conn_ref, [:flush])
+
+    device = %{device | conn_pid: nil, conn_ref: nil}
+
+    {:noreply, device}
   end
 
   def handle_info(
@@ -200,7 +144,7 @@ defmodule Stressgrid.Generator.GunDevice do
 
     {:noreply,
      device
-     |> Device.recycle(true)
+     |> Device.recycle()
      |> Device.inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
@@ -267,7 +211,7 @@ defmodule Stressgrid.Generator.GunDevice do
 
     {:noreply,
      device
-     |> Device.recycle(true)
+     |> Device.recycle()
      |> Device.inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
@@ -281,7 +225,7 @@ defmodule Stressgrid.Generator.GunDevice do
 
     {:noreply,
      device
-     |> Device.recycle(true)
+     |> Device.recycle()
      |> Device.inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
@@ -296,7 +240,7 @@ defmodule Stressgrid.Generator.GunDevice do
 
     {:noreply,
      device
-     |> Device.recycle(true)
+     |> Device.recycle()
      |> Device.inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
@@ -305,6 +249,82 @@ defmodule Stressgrid.Generator.GunDevice do
         device
       ) do
     {:noreply, device}
+  end
+
+  def open(device) do
+    device
+    |> Device.start_task()
+  end
+
+  def close(%GunDevice{conn_pid: conn_pid, conn_ref: conn_ref, stream_ref: stream_ref} = device) do
+    if conn_ref != nil do
+      true = Process.demonitor(conn_ref, [:flush])
+
+      if stream_ref == nil do
+        :ok =
+          try do
+            case :gun.info(conn_pid) do
+              %{socket: socket, transport: :tcp} ->
+                :gun_tcp.setopts(socket, [{:linger, {true, 0}}])
+                :gun_tcp.close(socket)
+                :ok
+
+              %{transport: :tls} ->
+                :ok
+            end
+          catch
+            :exit, {:noproc, {:sys, :get_state, _}} ->
+              :ok
+          end
+      end
+
+      _ = :gun.shutdown(conn_pid)
+    end
+
+    %{
+      device
+      | conn_pid: nil,
+        conn_ref: nil,
+        request_from: nil,
+        stream_ref: nil,
+        response_status: nil,
+        response_headers: nil,
+        response_iodata: nil
+    }
+  end
+
+  defp connect(%GunDevice{conn_pid: nil, address: {protocol, ip, port, host}} = device)
+       when protocol in [:http10, :http10s, :http, :https, :http2, :http2s] do
+    Logger.debug("Connect gun #{:inet.ntoa(ip)}:#{port}")
+
+    transport_opts =
+      case protocol do
+        :tls ->
+          [server_name_indication: host |> String.to_charlist()]
+
+        _ ->
+          []
+      end
+
+    opts =
+      %{
+        retry: 0,
+        transport: transport(protocol),
+        protocols: protocols(protocol),
+        transport_opts: transport_opts
+      }
+      |> Map.merge(protocol_opts(protocol))
+
+    device =
+      device
+      |> Device.do_start_timing(:conn)
+
+    {:ok, conn_pid} = :gun.start_link(self(), ip, port, opts)
+
+    conn_ref = Process.monitor(conn_pid)
+    true = Process.unlink(conn_pid)
+
+    %{device | conn_pid: conn_pid, conn_ref: conn_ref}
   end
 
   defp complete_request(
@@ -460,15 +480,21 @@ defmodule Stressgrid.Generator.GunDevice do
     |> Enum.concat([{"host", host}])
   end
 
-  defp transport(:http), do: :tcp
-  defp transport(:https), do: :tls
+  defp transport(protocol) when protocol in [:http10, :http, :http2], do: :tcp
+  defp transport(protocol) when protocol in [:http10s, :https, :http2s], do: :tls
 
-  defp transport(:http2), do: :tcp
-  defp transport(:http2s), do: :tls
+  defp protocols(protocol) when protocol in [:http10, :http10s, :http, :https], do: [:http]
+  defp protocols(protocol) when protocol in [:http2, :http2s], do: [:http2]
 
-  defp protocols(:http), do: [:http]
-  defp protocols(:https), do: [:http]
+  defp protocol_opts(protocol) when protocol in [:http10, :http10s] do
+    %{http_opts: %{version: :"HTTP/1.0", keepalive: :infinity}}
+  end
 
-  defp protocols(:http2), do: [:http2]
-  defp protocols(:http2s), do: [:http2]
+  defp protocol_opts(protocol) when protocol in [:http, :https] do
+    %{http_opts: %{keepalive: :infinity}}
+  end
+
+  defp protocol_opts(protocol) when protocol in [:http2, :http2s] do
+    %{http2_opts: %{keepalive: :infinity}}
+  end
 end

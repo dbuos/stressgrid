@@ -200,6 +200,12 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
       {"port", port}, acc when is_integer(port) ->
         acc |> put_elem(2, port)
 
+      {"protocol", "http10"}, acc ->
+        acc |> put_elem(0, :http10)
+
+      {"protocol", "http10s"}, acc ->
+        acc |> put_elem(0, :http10s)
+
       {"protocol", "http"}, acc ->
         acc |> put_elem(0, :http)
 

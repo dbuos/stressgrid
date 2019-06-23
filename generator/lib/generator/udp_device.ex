@@ -91,37 +91,6 @@ defmodule Stressgrid.Generator.UdpDevice do
   end
 
   def handle_info(
-        :open,
-        %UdpDevice{} = device
-      ) do
-    Logger.debug("Open UDP socket")
-
-    device =
-      case :gen_udp.open(0, [{:mode, :binary}]) do
-        {:ok, socket} ->
-          %{device | socket: socket} |> Device.start_task()
-
-        {:error, reason} ->
-          device
-          |> Device.recycle(true)
-          |> Device.inc_counter(reason |> udp_reason_to_key(), 1)
-      end
-
-    {:noreply, device}
-  end
-
-  def handle_info(
-        :recycled,
-        %UdpDevice{socket: socket} = device
-      ) do
-    if socket != nil do
-      :gen_udp.close(socket)
-    end
-
-    {:noreply, %{device | socket: nil, received_datagrams: [], waiting_receive_froms: []}}
-  end
-
-  def handle_info(
         {:udp, socket, ip, port, datagram},
         %UdpDevice{
           socket: socket,
@@ -155,6 +124,28 @@ defmodule Stressgrid.Generator.UdpDevice do
         device
       ) do
     {:noreply, device}
+  end
+
+  def open(%UdpDevice{} = device) do
+    Logger.debug("Open UDP socket")
+
+    case :gen_udp.open(0, [{:mode, :binary}]) do
+      {:ok, socket} ->
+        %{device | socket: socket} |> Device.start_task()
+
+      {:error, reason} ->
+        device
+        |> Device.recycle()
+        |> Device.inc_counter(reason |> udp_reason_to_key(), 1)
+    end
+  end
+
+  def close(%UdpDevice{socket: socket} = device) do
+    if socket != nil do
+      :gen_udp.close(socket)
+    end
+
+    %{device | socket: nil, received_datagrams: [], waiting_receive_froms: []}
   end
 
   defp udp_reason_to_key(:nxdomain) do

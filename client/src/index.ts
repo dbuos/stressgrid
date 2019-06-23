@@ -19,7 +19,7 @@ program
   .option('-t, --target-hosts <string>', 'target hosts, comma separated (localhost)')
   .option('-s, --size <number>', 'number of devices (10000)', parseInt)
   .option('--target-port <number>', 'target port (5000)', parseInt)
-  .option('--target-protocol <string>', 'target protocol http|https|http2|http2s|tcp|udp (http)')
+  .option('--target-protocol <string>', 'target protocol http10|http10s|http|https|http2|http2s|tcp|udp (http)')
   .option('--script-params <json>', 'script parameters ({})')
   .option('--rampup <number>', 'rampup seconds (900)', parseInt)
   .option('--sustain <number>', 'sustain seconds (900)', parseInt)

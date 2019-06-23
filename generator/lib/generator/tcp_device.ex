@@ -106,37 +106,6 @@ defmodule Stressgrid.Generator.TcpDevice do
   end
 
   def handle_info(
-        :open,
-        %TcpDevice{address: {:tcp, ip, port, _}} = device
-      ) do
-    Logger.debug("Open TCP socket #{:inet.ntoa(ip)}:#{port}")
-
-    device =
-      case :gen_tcp.connect(ip, port, [{:mode, :binary}]) do
-        {:ok, socket} ->
-          %{device | socket: socket} |> Device.start_task()
-
-        {:error, reason} ->
-          device
-          |> Device.recycle(true)
-          |> Device.inc_counter(reason |> tcp_reason_to_key(), 1)
-      end
-
-    {:noreply, device}
-  end
-
-  def handle_info(
-        :recycled,
-        %TcpDevice{socket: socket} = device
-      ) do
-    if socket != nil do
-      :gen_tcp.close(socket)
-    end
-
-    {:noreply, %{device | socket: nil, received_iodata: [], waiting_receive_froms: []}}
-  end
-
-  def handle_info(
         {:tcp, socket, data},
         %TcpDevice{
           socket: socket,
@@ -174,7 +143,7 @@ defmodule Stressgrid.Generator.TcpDevice do
       ) do
     {:noreply,
      device
-     |> Device.recycle(true)
+     |> Device.recycle()
      |> Device.inc_counter(reason |> tcp_reason_to_key(), 1)}
   end
 
@@ -193,6 +162,28 @@ defmodule Stressgrid.Generator.TcpDevice do
         device
       ) do
     {:noreply, device}
+  end
+
+  def open(%TcpDevice{address: {:tcp, ip, port, _}} = device) do
+    Logger.debug("Open TCP socket #{:inet.ntoa(ip)}:#{port}")
+
+    case :gen_tcp.connect(ip, port, [{:mode, :binary}]) do
+      {:ok, socket} ->
+        %{device | socket: socket} |> Device.start_task()
+
+      {:error, reason} ->
+        device
+        |> Device.recycle()
+        |> Device.inc_counter(reason |> tcp_reason_to_key(), 1)
+    end
+  end
+
+  def close(%TcpDevice{socket: socket} = device) do
+    if socket != nil do
+      :gen_tcp.close(socket)
+    end
+
+    %{device | socket: nil, received_iodata: [], waiting_receive_froms: []}
   end
 
   defp tcp_reason_to_key(:nxdomain) do

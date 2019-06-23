@@ -5,7 +5,8 @@ defmodule Stressgrid.Generator.Device do
 
   require Logger
 
-  defstruct task_fn: nil,
+  defstruct module: nil,
+            task_fn: nil,
             task: nil,
             script_error: nil,
             hists: %{},
@@ -56,12 +57,19 @@ defmodule Stressgrid.Generator.Device do
         {:noreply,
          state
          |> Device.do_init(
+           __MODULE__,
            id,
            task_script,
            task_params,
            unquote(device_functions),
            unquote(device_macros)
          )}
+      end
+
+      def handle_info(:open, state) do
+        {:noreply,
+         state
+         |> Device.do_open()}
       end
 
       def handle_info(
@@ -161,6 +169,7 @@ defmodule Stressgrid.Generator.Device do
 
   def do_init(
         %{device: device} = state,
+        module,
         id,
         task_script,
         task_params,
@@ -214,22 +223,23 @@ defmodule Stressgrid.Generator.Device do
           macros: [kernel_macros, base_device_macros] ++ device_macros
         )
 
-      _ = Kernel.send(self(), :open)
-
-      %{
+      state = %{
         state
         | device: %{
             device
-            | task_fn: task_fn
+            | module: module,
+              task_fn: task_fn
           }
       }
+
+      Kernel.apply(module, :open, [state])
     catch
       :error, error ->
         %{state | device: %{device | script_error: %{error: error, script: task_script}}}
     end
   end
 
-  def start_task(%{device: %Device{task_fn: task_fn} = device} = state) do
+  def start_task(%{device: %Device{task: nil, task_fn: task_fn} = device} = state) do
     task =
       %Task{pid: task_pid} =
       Task.async(fn ->
@@ -248,12 +258,16 @@ defmodule Stressgrid.Generator.Device do
     %{state | device: %{device | task: task}}
   end
 
+  def start_task(state) do
+    state
+  end
+
   def do_task_completed(%{device: %Device{task: %Task{ref: task_ref}}} = state) do
     Logger.debug("Script exited normally")
 
     true = Process.demonitor(task_ref, [:flush])
 
-    state |> recycle()
+    state |> do_recycle(false)
   end
 
   def do_task_down(
@@ -261,13 +275,17 @@ defmodule Stressgrid.Generator.Device do
         reason
       ) do
     state
-    |> recycle(true)
+    |> do_recycle(true)
     |> inc_counter(reason |> task_reason_to_key(), 1)
   end
 
-  def recycle(
-        %{device: %Device{task: task} = device} = state,
-        delay \\ false
+  def do_open(%{device: %Device{module: module}} = state) do
+    Kernel.apply(module, :open, [state])
+  end
+
+  def do_recycle(
+        %{device: %Device{module: module, task: task} = device} = state,
+        delay
       ) do
     Logger.debug("Recycle device")
 
@@ -275,10 +293,19 @@ defmodule Stressgrid.Generator.Device do
       Task.shutdown(task, :brutal_kill)
     end
 
-    _ = Kernel.send(self(), :recycled)
-    _ = Process.send_after(self(), :open, if(delay, do: @recycle_delay, else: 0))
+    state = %{state | device: %{device | task: nil, last_tss: %{}}}
+    state = Kernel.apply(module, :close, [state])
 
-    %{state | device: %{device | task: nil, last_tss: %{}}}
+    if delay do
+      _ = Process.send_after(self(), :open, @recycle_delay)
+      state
+    else
+      state |> do_open()
+    end
+  end
+
+  def recycle(state) do
+    state |> do_recycle(true)
   end
 
   def inc_counter(%{device: %Device{counters: counters} = device} = state, key, value) do
