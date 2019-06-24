@@ -258,10 +258,6 @@ defmodule Stressgrid.Generator.Device do
     %{state | device: %{device | task: task}}
   end
 
-  def start_task(state) do
-    state
-  end
-
   def do_task_completed(%{device: %Device{task: %Task{ref: task_ref}}} = state) do
     Logger.debug("Script exited normally")
 
