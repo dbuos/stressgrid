@@ -50,4 +50,22 @@ defmodule Stressgrid.Generator.GunDeviceContext do
       GunDevice.ws_upgrade(var!(device_pid), unquote(path), unquote(headers))
     end
   end
+
+  defmacro ws_send(frame) do
+    quote do
+      GunDevice.ws_send(var!(device_pid), unquote(frame))
+    end
+  end
+
+  defmacro ws_send_text(text) do
+    quote do
+      ws_send({:text, unquote(text)})
+    end
+  end
+
+  defmacro ws_send_binary(binary) do
+    quote do
+      ws_send({:binary, unquote(binary)})
+    end
+  end
 end
