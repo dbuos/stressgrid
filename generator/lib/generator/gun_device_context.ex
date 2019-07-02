@@ -44,4 +44,34 @@ defmodule Stressgrid.Generator.GunDeviceContext do
       GunDevice.request(var!(device_pid), "DELETE", unquote(path), unquote(headers), "")
     end
   end
+
+  defmacro ws_upgrade(path, headers \\ []) do
+    quote do
+      GunDevice.ws_upgrade(var!(device_pid), unquote(path), unquote(headers))
+    end
+  end
+
+  defmacro ws_send(frame) when is_atom(frame) or is_tuple(frame) do
+    quote do
+      GunDevice.ws_send(var!(device_pid), unquote(frame))
+    end
+  end
+
+  defmacro ws_send_text(text) do
+    quote do
+      ws_send({:text, unquote(text)})
+    end
+  end
+
+  defmacro ws_send_binary(binary) do
+    quote do
+      ws_send({:binary, unquote(binary)})
+    end
+  end
+
+  defmacro ws_receive(timeout \\ 5000) do
+    quote do
+      GunDevice.ws_receive(var!(device_pid), unquote(timeout))
+    end
+  end
 end

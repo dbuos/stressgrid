@@ -6,7 +6,8 @@ Stressgrid is a software for load testing at the scale of millions of simulated 
 
 Stressgrid supports following protocols.
 
-- HTTP 1.1 and 2 (over TLS and plain)
+- HTTP 1.0, 1.1 and 2 (over TLS and plain)
+- WebSocket
 - TCP
 - UDP
 

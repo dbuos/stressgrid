@@ -27,12 +27,21 @@ defmodule Stressgrid.Generator.GunDevice do
          put: 3,
          patch: 1,
          patch: 2,
-         patch: 3
+         patch: 3,
+         ws_upgrade: 1,
+         ws_upgrade: 2,
+         ws_send: 1,
+         ws_send_text: 1,
+         ws_send_binary: 1,
+         ws_receive: 0,
+         ws_receive: 1
        ]
        |> Enum.sort()}
     ]
 
   require Logger
+
+  @max_received_ws_frames 1024
 
   defstruct address: nil,
             conn_pid: nil,
@@ -41,7 +50,10 @@ defmodule Stressgrid.Generator.GunDevice do
             stream_ref: nil,
             response_status: nil,
             response_headers: nil,
-            response_iodata: nil
+            response_iodata: nil,
+            ws_upgraded: false,
+            waiting_ws_receive_froms: [],
+            received_ws_frames: []
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
@@ -63,12 +75,44 @@ defmodule Stressgrid.Generator.GunDevice do
     end
   end
 
+  def ws_upgrade(pid, path, headers) when is_map(headers) do
+    ws_upgrade(pid, path, headers |> Map.to_list())
+  end
+
+  def ws_upgrade(pid, path, headers) when is_list(headers) do
+    if Process.alive?(pid) do
+      GenServer.call(pid, {:ws_upgrade, path, headers})
+    else
+      exit(:device_terminated)
+    end
+  end
+
+  def ws_send(pid, frames) do
+    if Process.alive?(pid) do
+      GenServer.call(pid, {:ws_send, frames})
+    else
+      exit(:device_terminated)
+    end
+  end
+
+  def ws_receive(pid, timeout) do
+    if Process.alive?(pid) do
+      GenServer.call(pid, :ws_receive, timeout)
+    else
+      exit(:device_terminated)
+    end
+  end
+
   def handle_call(call, from, %GunDevice{conn_pid: nil} = device) do
     device =
       device
       |> connect()
 
     handle_call(call, from, device)
+  end
+
+  def handle_call({:request, _, _, _, _}, _, %GunDevice{ws_upgraded: true} = device) do
+    {:reply, {:error, :ws_upgraded}, device}
   end
 
   def handle_call(
@@ -101,6 +145,77 @@ defmodule Stressgrid.Generator.GunDevice do
       error ->
         {:reply, error, device}
     end
+  end
+
+  def handle_call({:ws_upgrade, _, _}, _, %GunDevice{ws_upgraded: true} = device) do
+    {:reply, {:error, :already_ws_upgraded}, device}
+  end
+
+  def handle_call(
+        {:ws_upgrade, path, headers},
+        request_from,
+        %GunDevice{
+          address: {_, _, _, host},
+          conn_pid: conn_pid,
+          stream_ref: nil,
+          request_from: nil
+        } = device
+      ) do
+    Logger.debug("Starting websocket upgrade #{path}")
+
+    device =
+      device
+      |> Device.do_start_timing(:ws_upgrade)
+
+    headers =
+      headers
+      |> add_host_to_headers(host)
+
+    stream_ref = :gun.ws_upgrade(conn_pid, path, headers)
+
+    device = %{device | stream_ref: stream_ref, request_from: request_from}
+    {:noreply, device}
+  end
+
+  def handle_call(
+        {:ws_send, _},
+        _,
+        %GunDevice{stream_ref: nil} = device
+      ) do
+    Logger.warn("Must be upgraded to send websocket frame")
+
+    {:reply, {:error, :must_ws_upgrade}, device}
+  end
+
+  def handle_call(
+        {:ws_send, frame},
+        _,
+        %GunDevice{
+          conn_pid: conn_pid
+        } = device
+      ) do
+    Logger.debug("Sending websocket frame")
+
+    :ok = :gun.ws_send(conn_pid, frame)
+
+    {:reply, :ok, device}
+  end
+
+  def handle_call(
+        :ws_receive,
+        _,
+        %GunDevice{received_ws_frames: [frame | received_ws_frames]} = device
+      ) do
+    {:reply, {:ok, frame}, %{device | received_ws_frames: received_ws_frames}}
+  end
+
+  def handle_call(
+        :ws_receive,
+        ws_receive_from,
+        %GunDevice{waiting_ws_receive_froms: waiting_ws_receive_froms} = device
+      ) do
+    {:noreply,
+     %{device | waiting_ws_receive_froms: waiting_ws_receive_froms ++ [ws_receive_from]}}
   end
 
   def handle_info(
@@ -230,6 +345,62 @@ defmodule Stressgrid.Generator.GunDevice do
   end
 
   def handle_info(
+        {:gun_upgrade, conn_pid, stream_ref, ["websocket"], response_headers},
+        %GunDevice{stream_ref: stream_ref, conn_pid: conn_pid, request_from: request_from} =
+          device
+      ) do
+    Logger.debug("Websocket upgrade succeeded")
+
+    device =
+      %{
+        device
+        | request_from: nil,
+          ws_upgraded: true
+      }
+      |> Device.do_stop_timing(:ws_upgrade)
+
+    GenServer.reply(
+      request_from,
+      {:ok, response_headers}
+    )
+
+    {:noreply, device}
+  end
+
+  def handle_info(
+        {:gun_ws, conn_pid, stream_ref, frame},
+        %GunDevice{
+          stream_ref: stream_ref,
+          conn_pid: conn_pid,
+          waiting_ws_receive_froms: [],
+          received_ws_frames: received_ws_frames
+        } = device
+      ) do
+    if length(received_ws_frames) > @max_received_ws_frames do
+      Logger.debug("Discarded websocket frame")
+
+      {:noreply, device}
+    else
+      Logger.debug("Received websocket frame")
+
+      {:noreply, %{device | received_ws_frames: received_ws_frames ++ [frame]}}
+    end
+  end
+
+  def handle_info(
+        {:gun_ws, conn_pid, stream_ref, frame},
+        %GunDevice{
+          stream_ref: stream_ref,
+          conn_pid: conn_pid,
+          waiting_ws_receive_froms: [ws_receive_from | waiting_ws_receive_froms]
+        } = device
+      ) do
+    Logger.debug("Received websocket frame for waiting receive")
+    GenServer.reply(ws_receive_from, {:ok, frame})
+    {:noreply, %{device | waiting_ws_receive_froms: waiting_ws_receive_froms}}
+  end
+
+  def handle_info(
         {:DOWN, conn_ref, :process, conn_pid, reason},
         %GunDevice{
           conn_ref: conn_ref,
@@ -245,9 +416,11 @@ defmodule Stressgrid.Generator.GunDevice do
   end
 
   def handle_info(
-        _,
+        message,
         device
       ) do
+    Logger.debug("Unexpected message #{inspect(message)}")
+
     {:noreply, device}
   end
 
@@ -289,7 +462,8 @@ defmodule Stressgrid.Generator.GunDevice do
         stream_ref: nil,
         response_status: nil,
         response_headers: nil,
-        response_iodata: nil
+        response_iodata: nil,
+        ws_upgraded: false
     }
   end
 
@@ -297,10 +471,23 @@ defmodule Stressgrid.Generator.GunDevice do
        when protocol in [:http10, :http10s, :http, :https, :http2, :http2s] do
     Logger.debug("Connect gun #{:inet.ntoa(ip)}:#{port}")
 
+    protocols = protocols(protocol)
+    transport = transport(protocol)
+
     transport_opts =
-      case protocol do
+      case transport do
         :tls ->
-          [server_name_indication: host |> String.to_charlist()]
+          alpn_advertised_protocols =
+            case protocol do
+              :http10s -> ["http/1.0"]
+              :https -> ["http/1.1"]
+              :http2s -> ["h2"]
+            end
+
+          [
+            alpn_advertised_protocols: alpn_advertised_protocols,
+            server_name_indication: host |> String.to_charlist()
+          ]
 
         _ ->
           []
@@ -309,8 +496,8 @@ defmodule Stressgrid.Generator.GunDevice do
     opts =
       %{
         retry: 0,
-        transport: transport(protocol),
-        protocols: protocols(protocol),
+        protocols: protocols,
+        transport: transport,
         transport_opts: transport_opts
       }
       |> Map.merge(protocol_opts(protocol))
