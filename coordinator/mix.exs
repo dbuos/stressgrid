@@ -23,7 +23,6 @@ defmodule Stressgrid.Coordinator.MixProject do
       {:cowboy, "~> 2.6"},
       {:jason, "~> 1.1"},
       {:hdr_histogram, "~> 0.3.2"},
-      {:distillery, "~> 2.0.0-rc.8"},
       {:ex_aws_cloudwatch, "~> 2.0"},
       {:httpoison, "~> 1.3"}
     ]

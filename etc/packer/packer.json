@@ -1,0 +1,39 @@
+{
+  "variables": {
+    "git_hash": "",
+    "release": ""
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "region": "us-west-1",
+      "source_ami_filter": {
+        "filters": {
+          "name": "ubuntu/images/hvm-ssd/ubuntu-bionic-18.04-amd64-server-*",
+          "root-device-type": "ebs"
+        },
+        "owners": ["099720109477"],
+        "most_recent": true
+      },
+      "instance_type": "t2.micro",
+      "ssh_username": "ubuntu",
+      "ami_name": "stressgrid-{{user `release`}}-amd64-{{user `git_hash`}}",
+      "ami_description": "Stressgrid {{user `release`}} ({{user `git_hash`}})",
+      "ami_regions": ["us-east-1", "us-east-2", "us-west-2"],
+      "ami_groups": ["all"]
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "file",
+      "source": "/tmp/{{user `release`}}/{{user `git_hash`}}/release.tar.gz",
+      "destination": "/tmp/release.tar.gz"
+    },
+    {
+      "type": "shell",
+      "environment_vars": ["RELEASE={{user `release`}}"],
+      "execute_command": "chmod +x {{ .Path }}; sudo {{ .Vars }} {{ .Path }}",
+      "script": "init.sh"
+    }
+  ]
+}

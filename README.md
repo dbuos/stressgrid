@@ -77,7 +77,7 @@ Alternatively you can use `sgcli` command line interface. `sgcli run` command wi
 
 If you are not running in AWS or are unwilling to use Stressgrid's AMIs, you can build the coordinator and the generator releases yourself. To build Stressgrid releases you’ll need the following:
 
-- Elixir 1.7
+- Elixir 1.9
 - GNU C compiler (for HDR histograms)
 - Node.js 8.16.0 (for the management dashboard and the CLI)
 
@@ -107,7 +107,7 @@ To install the `sgcli` command locally:
 
 # Running the coordinator
 
-To start the coordinator in the background, run:
+To start the coordinator, run:
 
     $ _build/prod/rel/coordinator/bin/coordinator start
 
@@ -121,7 +121,7 @@ To enable the CloudWatch report writer, set `CW_REGION` environment variable to 
 
 # Running the generator(s)
 
-For realistic workloads, you will need multiple generators, each running on a dedicated computer or cloud instance. To start the generator in the background, run:
+For realistic workloads, you will need multiple generators, each running on a dedicated computer or cloud instance. To start the generator, run:
 
     $ _build/prod/rel/generator/bin/generator start
 
