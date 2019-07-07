@@ -485,6 +485,7 @@ defmodule Stressgrid.Generator.GunDevice do
             end
 
           [
+            verify: :verify_none,
             alpn_advertised_protocols: alpn_advertised_protocols,
             server_name_indication: host |> String.to_charlist()
           ]
