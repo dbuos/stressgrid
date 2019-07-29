@@ -273,7 +273,7 @@ defmodule Stressgrid.Generator.Connection do
     %{connection | cohorts: %{}}
   end
 
-  def read_network_device_names do
+  defp read_network_device_names do
     case File.read("/proc/net/dev") do
       {:ok, r} ->
         case r |> String.split("\n", trim: true) do
@@ -323,7 +323,7 @@ defmodule Stressgrid.Generator.Connection do
     end
   end
 
-  def read_network_device_stats(device_name) do
+  defp read_network_device_stats(device_name) do
     case File.read("/proc/net/dev") do
       {:ok, r} ->
         case r |> String.split("\n", trim: true) do
