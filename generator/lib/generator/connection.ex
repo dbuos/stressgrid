@@ -17,7 +17,8 @@ defmodule Stressgrid.Generator.Connection do
             timeout_ref: nil,
             stream_ref: nil,
             cohorts: %{},
-            address_base: 0
+            address_base: 0,
+            network_device_name: nil
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
@@ -25,6 +26,12 @@ defmodule Stressgrid.Generator.Connection do
 
   def init(args) do
     :erlang.system_flag(:scheduler_wall_time, true)
+
+    network_device_name =
+      read_network_device_names()
+      |> find_network_device_name(System.get_env() |> Map.get("NETWORK_DEVICE"))
+
+    Logger.info("Collecting network stats from #{inspect(network_device_name)}")
 
     host = args |> Keyword.fetch!(:host)
     port = args |> Keyword.fetch!(:port)
@@ -43,7 +50,12 @@ defmodule Stressgrid.Generator.Connection do
     Logger.info("Connecting to coordinator at #{host}:#{port}...")
 
     {:ok,
-     %Connection{id: args |> Keyword.fetch!(:id), conn_pid: conn_pid, timeout_ref: timeout_ref}}
+     %Connection{
+       id: args |> Keyword.fetch!(:id),
+       conn_pid: conn_pid,
+       timeout_ref: timeout_ref,
+       network_device_name: network_device_name
+     }}
   end
 
   def handle_info(
@@ -261,7 +273,57 @@ defmodule Stressgrid.Generator.Connection do
     %{connection | cohorts: %{}}
   end
 
-  def read_net_dev do
+  defp read_network_device_names do
+    case File.read("/proc/net/dev") do
+      {:ok, r} ->
+        case r |> String.split("\n", trim: true) do
+          [_ | [_ | devs]] ->
+            devs
+            |> Enum.reduce([], fn dev, acc ->
+              case dev |> String.split(" ", trim: true) do
+                [header | _] ->
+                  [header |> String.trim_trailing(":") | acc]
+
+                _ ->
+                  acc
+              end
+            end)
+
+          _ ->
+            []
+        end
+
+      error ->
+        Logger.error("Error reading /proc/net/dev: #{inspect(error)}")
+        []
+    end
+  end
+
+  defp find_network_device_name(device_names, device_name) do
+    case device_names
+         |> Enum.find(fn
+           ^device_name -> true
+           _ -> false
+         end) do
+      nil ->
+        case device_names
+             |> Enum.reject(fn
+               "lo" -> true
+               _ -> false
+             end) do
+          [device_name | _] ->
+            device_name
+
+          _ ->
+            nil
+        end
+
+      device_name ->
+        device_name
+    end
+  end
+
+  defp read_network_device_stats(device_name) do
     case File.read("/proc/net/dev") do
       {:ok, r} ->
         case r |> String.split("\n", trim: true) do
@@ -270,11 +332,17 @@ defmodule Stressgrid.Generator.Connection do
             |> Enum.reduce(:error, fn
               dev, :error ->
                 case dev |> String.split(" ", trim: true) do
-                  [header | info] when header !== "lo:" ->
-                    bytes_rx = info |> Enum.at(0) |> String.to_integer()
-                    bytes_tx = info |> Enum.at(8) |> String.to_integer()
+                  [header | info] ->
+                    case header |> String.trim_trailing(":") do
+                      ^device_name ->
+                        bytes_rx = info |> Enum.at(0) |> String.to_integer()
+                        bytes_tx = info |> Enum.at(8) |> String.to_integer()
 
-                    {:ok, bytes_rx, bytes_tx}
+                        {:ok, bytes_rx, bytes_tx}
+
+                      _ ->
+                        :error
+                    end
 
                   _ ->
                     :error
@@ -316,8 +384,14 @@ defmodule Stressgrid.Generator.Connection do
     {:ok, utilization, %{connection | wall_times: next_wall_times}}
   end
 
-  defp network_utilization(%Connection{net_bytes_rx: nil, net_bytes_tx: nil} = connection) do
-    case read_net_dev() do
+  defp network_utilization(
+         %Connection{
+           net_bytes_rx: nil,
+           net_bytes_tx: nil,
+           network_device_name: network_device_name
+         } = connection
+       ) do
+    case read_network_device_stats(network_device_name) do
       {:ok, bytes_rx, bytes_tx} ->
         {:ok, 0, 0, %{connection | net_bytes_rx: bytes_rx, net_bytes_tx: bytes_tx}}
 
@@ -327,9 +401,13 @@ defmodule Stressgrid.Generator.Connection do
   end
 
   defp network_utilization(
-         %Connection{net_bytes_rx: bytes_rx0, net_bytes_tx: bytes_tx0} = connection
+         %Connection{
+           net_bytes_rx: bytes_rx0,
+           net_bytes_tx: bytes_tx0,
+           network_device_name: network_device_name
+         } = connection
        ) do
-    case read_net_dev() do
+    case read_network_device_stats(network_device_name) do
       {:ok, bytes_rx1, bytes_tx1} ->
         {:ok, bytes_rx1 - bytes_rx0, bytes_tx1 - bytes_tx0,
          %{connection | net_bytes_rx: bytes_rx1, net_bytes_tx: bytes_tx1}}
