@@ -1,78 +1,70 @@
-variable "region" {
+terraform {
+  required_version = ">= 0.12.6"
+  required_providers {
+    aws = ">= 2.23.0"
+    external = ">= 1.2.0"
+  }
+}
+
+variable region {
   type = "string"
 }
 
-variable "vpc_id" {
+variable vpc_id {
   type = "string"
 }
 
-variable "key_name" {
+variable key_name {
   type = "string"
 }
 
-variable "capacity" {
+variable capacity {
   type    = "string"
   default = "1"
 }
 
-variable "generator_instance_type" {
+variable generator_instance_type {
   type    = "string"
   default = "c5.xlarge"
 }
 
-variable "coordinator_instance_type" {
+variable coordinator_instance_type {
   type    = "string"
   default = "t2.micro"
 }
 
-variable "ami_owner" {
+variable ami_owner {
   type    = "string"
   default = "198789150561"
 }
 
 provider "aws" {
-  region = "${var.region}"
+  region = var.region
 }
 
 data "external" "my_ip" {
   program = ["curl", "https://api.ipify.org?format=json"]
 }
 
+data "aws_subnet_ids" "my_subnets" {
+  vpc_id = var.vpc_id
+}
+
 data "aws_ami" "coordinator" {
   most_recent = true
   name_regex  = "^stressgrid-coordinator-amd64-.*"
-  owners      = ["${var.ami_owner}"]
+  owners      = [var.ami_owner]
 }
 
 data "aws_ami" "generator" {
   most_recent = true
   name_regex  = "^stressgrid-generator-amd64-.*"
-  owners      = ["${var.ami_owner}"]
-}
-
-data "template_file" "coordinator_init" {
-  template = "${file("${path.module}/coordinator_init.sh")}"
-
-  vars {
-    region = "${var.region}"
-  }
-}
-
-data "template_file" "generator_init" {
-  template = "${file("${path.module}/generator_init.sh")}"
-
-  vars {
-    coordinator_dns = "${aws_instance.coordinator.private_dns}"
-  }
-}
-
-data "aws_subnet_ids" "subnets" {
-  vpc_id = "${var.vpc_id}"
+  owners      = [var.ami_owner]
 }
 
 resource "aws_security_group" "coordinator" {
   name   = "stressgrid-coordinator"
-  vpc_id = "${var.vpc_id}"
+  vpc_id = var.vpc_id
 
   ingress {
     from_port   = 8000
@@ -85,7 +77,7 @@ resource "aws_security_group" "coordinator" {
     from_port       = 9696
     to_port         = 9696
     protocol        = "tcp"
-    security_groups = ["${aws_security_group.generator.id}"]
+    security_groups = [aws_security_group.generator.id]
   }
 
   egress {
@@ -98,7 +90,7 @@ resource "aws_security_group" "coordinator" {
 
 resource "aws_security_group" "generator" {
   name   = "stressgrid-generator"
-  vpc_id = "${var.vpc_id}"
+  vpc_id = var.vpc_id
 
   egress {
     from_port   = 0
@@ -128,31 +120,31 @@ data "aws_iam_policy_document" "coordinator_assume_role" {
 
 resource "aws_iam_role" "coordinator" {
   name               = "stressgrid-coordinator"
-  assume_role_policy = "${data.aws_iam_policy_document.coordinator_assume_role.json}"
+  assume_role_policy = data.aws_iam_policy_document.coordinator_assume_role.json
 }
 
 resource "aws_iam_role_policy" "coordinator_cloudwatch" {
   name   = "stressgrid-coordinator-cloudwatch"
-  role   = "${aws_iam_role.coordinator.id}"
-  policy = "${data.aws_iam_policy_document.coordinator_cloudwatch.json}"
+  role   = aws_iam_role.coordinator.id
+  policy = data.aws_iam_policy_document.coordinator_cloudwatch.json
 }
 
 resource "aws_iam_instance_profile" "coordinator" {
   name = "stressgrid-coordinator"
-  role = "${aws_iam_role.coordinator.name}"
+  role = aws_iam_role.coordinator.name
 }
 
 resource "aws_instance" "coordinator" {
-  ami                         = "${data.aws_ami.coordinator.id}"
-  instance_type               = "${var.coordinator_instance_type}"
-  key_name                    = "${var.key_name}"
-  user_data                   = "${data.template_file.coordinator_init.rendered}"
-  iam_instance_profile        = "${aws_iam_instance_profile.coordinator.id}"
-  security_groups             = ["${aws_security_group.coordinator.id}"]
+  ami                         = data.aws_ami.coordinator.id
+  instance_type               = var.coordinator_instance_type
+  key_name                    = var.key_name
+  user_data                   = templatefile("${path.module}/coordinator_init.sh", { region = var.region })
+  iam_instance_profile        = aws_iam_instance_profile.coordinator.id
+  vpc_security_group_ids      = [aws_security_group.coordinator.id]
   associate_public_ip_address = true
-  subnet_id                   = "${data.aws_subnet_ids.subnets.ids[0]}"
+  subnet_id                   = sort(data.aws_subnet_ids.my_subnets.ids)[0]
 
-  tags {
+  tags = {
     Name = "stressgrid-coordinator"
   }
 }
@@ -163,21 +155,21 @@ output "coordinator_url" {
 
 resource "aws_launch_configuration" "generator" {
   name                        = "stressgrid-generator"
-  image_id                    = "${data.aws_ami.generator.id}"
-  instance_type               = "${var.generator_instance_type}"
-  key_name                    = "${var.key_name}"
-  user_data                   = "${data.template_file.generator_init.rendered}"
-  security_groups             = ["${aws_security_group.generator.id}"]
+  image_id                    = data.aws_ami.generator.id
+  instance_type               = var.generator_instance_type
+  key_name                    = var.key_name
+  user_data                   = templatefile("${path.module}/generator_init.sh", { coordinator_dns = aws_instance.coordinator.private_dns })
+  security_groups             = [aws_security_group.generator.id]
   associate_public_ip_address = false
 }
 
 resource "aws_autoscaling_group" "generator" {
   name                 = "stressgrid-generator"
-  launch_configuration = "${aws_launch_configuration.generator.name}"
+  launch_configuration = aws_launch_configuration.generator.name
   min_size             = 0
   max_size             = 100
-  desired_capacity     = "${var.capacity}"
-  vpc_zone_identifier  = ["${data.aws_subnet_ids.subnets.ids}"]
+  desired_capacity     = var.capacity
+  vpc_zone_identifier  = data.aws_subnet_ids.my_subnets.ids
 
   lifecycle {
     create_before_destroy = true
