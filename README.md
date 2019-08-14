@@ -33,7 +33,7 @@ Each generator is responsible for the metrics of its own utilization, with two k
 
 # Running with Terraform
 
-If you are using AWS, the easiest way to start using Stressgrid is by deploying it into your target VPC with [Terraform](https://www.terraform.io/). The prerequisites are Terraform itself and curl. By default, for the coordinator and the generator, the Terraform script will use the public AMIs prepared by the Stressgrid team based on the latest release:
+If you are using AWS, the easiest way to start using Stressgrid is by deploying it into your target VPC with [Terraform](https://www.terraform.io/). The prerequisites are Terraform 0.12 or higher and curl. By default, for the coordinator and the generator, the Terraform script will use the public AMIs prepared by the Stressgrid team based on the latest release:
 
     $ cd terraform
     $ terraform init
