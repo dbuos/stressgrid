@@ -389,7 +389,7 @@ defmodule Stressgrid.Coordinator.Reporter do
       |> Enum.take(@aggregated_max_size)
 
     aggregated_generator_counts =
-      [Map.size(generator_telemetries) | aggregated_generator_counts]
+      [map_size(generator_telemetries) | aggregated_generator_counts]
       |> Enum.take(@aggregated_max_size)
 
     aggregated_last_errors =

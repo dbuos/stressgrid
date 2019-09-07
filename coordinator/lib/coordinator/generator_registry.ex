@@ -55,7 +55,7 @@ defmodule Stressgrid.Coordinator.GeneratorRegistry do
       ) do
     :ok =
       registrations
-      |> Enum.zip(Utils.split_blocks(blocks, Map.size(registrations)))
+      |> Enum.zip(Utils.split_blocks(blocks, map_size(registrations)))
       |> Enum.each(fn {{_, pid}, blocks} ->
         :ok = GeneratorConnection.start_cohort(pid, id, blocks, addresses)
       end)
