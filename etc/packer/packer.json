@@ -12,15 +12,33 @@
           "name": "ubuntu/images/hvm-ssd/ubuntu-bionic-18.04-amd64-server-*",
           "root-device-type": "ebs"
         },
-        "owners": ["099720109477"],
+        "owners": [
+          "099720109477"
+        ],
         "most_recent": true
       },
       "instance_type": "t2.micro",
       "ssh_username": "ubuntu",
       "ami_name": "stressgrid-{{user `release`}}-amd64-{{user `git_hash`}}",
       "ami_description": "Stressgrid {{user `release`}} ({{user `git_hash`}})",
-      "ami_regions": ["us-east-1", "us-east-2", "us-west-2"],
-      "ami_groups": ["all"]
+      "ami_regions": [
+        "us-east-1",
+        "us-east-2",
+        "us-west-2"
+      ],
+      "ami_groups": [
+        "all"
+      ]
+    },
+    {
+      "type": "googlecompute",
+      "project_id": "stressgrid",
+      "zone": "us-west2-a",
+      "source_image_family": "ubuntu-minimal-1804-lts",
+      "machine_type": "n1-standard-1",
+      "ssh_username": "ubuntu",
+      "image_name": "stressgrid-{{user `release`}}-amd64-{{user `git_hash`}}",
+      "image_description": "Stressgrid {{user `release`}} ({{user `git_hash`}})"
     }
   ],
   "provisioners": [
@@ -31,7 +49,9 @@
     },
     {
       "type": "shell",
-      "environment_vars": ["RELEASE={{user `release`}}"],
+      "environment_vars": [
+        "RELEASE={{user `release`}}"
+      ],
       "execute_command": "chmod +x {{ .Path }}; sudo {{ .Vars }} {{ .Path }}",
       "script": "init.sh"
     }
