@@ -1,7 +1,8 @@
 {
   "variables": {
     "git_hash": "",
-    "release": ""
+    "release": "",
+    "gcp_project_id": ""
   },
   "builders": [
     {
@@ -32,7 +33,7 @@
     },
     {
       "type": "googlecompute",
-      "project_id": "stressgrid",
+      "project_id": "{{user `gcp_project_id`}}",
       "zone": "us-west2-a",
       "source_image_family": "ubuntu-minimal-1804-lts",
       "machine_type": "n1-standard-1",
