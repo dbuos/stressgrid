@@ -25,7 +25,7 @@ Stressgrid scripts are written in Elixir and may only use a predefined set of si
 
 The coordinator is also responsible for the aggregation of **metrics** and **reporting** through pluggable **writers** that can record metrics to a file or database for analysis and visualization.
 
-Currently, two writers are available: the CSV file writer and the CloudWatch writer. Metrics are reported every minute. Each metric can be represented by a scalar value or by a histogram. Scalar values are used for simple counters accumulated since the beginning of the run, or during the reporting interval. Histogram metrics are used for aggregating statistics across many events that occurred during the reporting interval.
+Currently, two writers are available: the CSV file writer and the Amazon CloudWatch writer. Metrics are reported every minute. Each metric can be represented by a scalar value or by a histogram. Scalar values are used for simple counters accumulated since the beginning of the run, or during the reporting interval. Histogram metrics are used for aggregating statistics across many events that occurred during the reporting interval.
 
 Since a very large number of events—such as HTTP requests—may happen across all connections, Stressgrid uses [HDR histograms](http://hdrhistogram.org) to compress statistics. HRD histograms are compressed within each generator as events take place. Then, generators push the histograms every second to the coordinator, to further compress into the final histogram that is reported every minute to the writers.
 
@@ -117,7 +117,7 @@ When started, it opens port 8000 for the management website, and port 9696 for g
 - generators are enabled to connect to port 9696 of the coordinator;
 - generators are enabled to connect to your target instances.
 
-To enable the CloudWatch report writer, set `CW_REGION` environment variable to specify the region where you would like for the metrics to be written. You will also need `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables, or your EC2 instance should have an IAM role associated with it. The only required permission is `cloudwatch:PutMetricData`. If you are using our Terraform script, it will set the coordinator EC2 role with that permission.
+To enable the Amazon CloudWatch report writer, set `CW_REGION` environment variable to specify the region where you would like for the metrics to be written. You will also need `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables, or your EC2 instance should have an IAM role associated with it. The only required permission is `cloudwatch:PutMetricData`. If you are using our Terraform script, it will set the coordinator EC2 role with that permission.
 
 # Running the generator(s)
 
@@ -127,25 +127,39 @@ For realistic workloads, you will need multiple generators, each running on a de
 
 You may use `COORDINATOR_URL` environment variable to specify the coordinator WebSocket URL (defaults to `ws://localhost:9696`). Also you may use `GENERATOR_ID` to override default based on hostname. Note that you may need to adjust Linux kernel settings for optimal generator performance. If you are using our packer script, it will do this for you.
 
-# Creating EC2 AMIs for the generator and the coordinator
+# Creating cloud images for the generator and the coordinator
 
-You can create your own AMIs by using [packer](https://www.packer.io/) scripts.
+You can create your own EC2 AMIs or GCP images by using [packer](https://www.packer.io/) scripts.
 
-By default, Stressgrid images are based on Ubuntu 18.04, so you will need the same OS to build binary releases before running packer scripts, because it simply copies the release. The packer script also includes the necessary Linux kernel settings and the Systemd service. See packer documentation for the [necessary AWS permissions](https://www.packer.io/docs/builders/amazon.html#iam-task-or-instance-role).
+By default, Stressgrid images are based on Ubuntu 18.04, so you will need the same OS to build binary releases before running packer scripts, because it simply copies the release. The packer script also includes the necessary Linux kernel settings and the Systemd service.
 
-To create an AMI for the coordinator:
+See packer documentation for the necessary [AWS permissions](https://www.packer.io/docs/builders/amazon.html#iam-task-or-instance-role) and [GCP service account roles](https://packer.io/docs/builders/googlecompute.html#authentication).
+
+To create an EC2 AMI for the coordinator:
 
     $ cd coordinator
-    $ ./packer.sh
+    $ ./packer.sh -only=amazon-ebs
 
-To create an AMI for the generator:
+To create an GCP image for the coordinator:
+
+    $ cd coordinator
+    $ ./packer.sh -only=googlecompute -var gcp_project_id=your_project_id
+
+To create an EC2 AMI for the generator:
 
     $ cd generator
-    $ ./packer.sh
+    $ ./packer.sh -only=amazon-ebs
 
-# Launching EC2 instances for generator and the coordinator
+To create an GCP image for the generator:
 
-When launching coordinator and generator instances, you will need to pass the corresponding configuration using [EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html). If you are using our Terraform script, it will set this up for you.
+    $ cd generator
+    $ ./packer.sh -only=googlecompute -var gcp_project_id=your_project_id
+
+# Launching cloud instances for generator and the coordinator
+
+When launching coordinator and generator instances, you will need to pass the corresponding configuration using [EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html) or [GCP startup script](https://cloud.google.com/compute/docs/startupscript).
+
+If you are using our Terraform script, it will set this up for you.
 
 Example for the coordinator:
 
