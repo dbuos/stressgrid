@@ -27,6 +27,12 @@ defmodule Stressgrid.Generator.DeviceContext do
     end
   end
 
+  defmacro inc_counter(key, value \\ 1) do
+    quote do
+      Device.inc_counter(var!(device_pid), unquote(key), unquote(value))
+    end
+  end
+
   def delay(milliseconds, deviation_ratio \\ 0)
       when deviation_ratio >= 0 and deviation_ratio < 1 do
     deviation = milliseconds * deviation_ratio

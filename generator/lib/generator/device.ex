@@ -53,6 +53,14 @@ defmodule Stressgrid.Generator.Device do
         {:reply, :ok, state |> Device.do_stop_start_timing(stop_key, start_key)}
       end
 
+      def handle_call(
+            {:inc_counter, key, value},
+            _,
+            state
+          ) do
+        {:reply, :ok, state |> Device.do_inc_counter(key, value)}
+      end
+
       def handle_info({:init, id, task_script, task_params}, state) do
         {:noreply,
          state
@@ -126,6 +134,14 @@ defmodule Stressgrid.Generator.Device do
   def stop_start_timing(pid, stop_key, start_key) do
     if Process.alive?(pid) do
       GenServer.call(pid, {:stop_start_timing, stop_key, start_key})
+    else
+      :ok
+    end
+  end
+
+  def inc_counter(pid, key, value) do
+    if Process.alive?(pid) do
+      GenServer.call(pid, {:inc_counter, key, value})
     else
       :ok
     end
@@ -211,7 +227,9 @@ defmodule Stressgrid.Generator.Device do
          start_timing: 1,
          stop_timing: 1,
          stop_start_timing: 1,
-         stop_start_timing: 2
+         stop_start_timing: 2,
+         inc_counter: 1,
+         inc_counter: 2
        ]
        |> Enum.sort()}
 
@@ -272,7 +290,7 @@ defmodule Stressgrid.Generator.Device do
       ) do
     state
     |> do_recycle(true)
-    |> inc_counter(reason |> task_reason_to_key(), 1)
+    |> do_inc_counter(reason |> task_reason_to_key(), 1)
   end
 
   def do_open(%{device: %Device{module: module}} = state) do
@@ -304,7 +322,7 @@ defmodule Stressgrid.Generator.Device do
     state |> do_recycle(true)
   end
 
-  def inc_counter(%{device: %Device{counters: counters} = device} = state, key, value) do
+  def do_inc_counter(%{device: %Device{counters: counters} = device} = state, key, value) do
     %{
       state
       | device: %{

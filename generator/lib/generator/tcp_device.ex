@@ -75,7 +75,7 @@ defmodule Stressgrid.Generator.TcpDevice do
 
         {:error, reason} ->
           device
-          |> Device.inc_counter(reason |> tcp_reason_to_key(), 1)
+          |> Device.do_inc_counter(reason |> tcp_reason_to_key(), 1)
       end
 
     {:reply, :ok, device}
@@ -144,7 +144,7 @@ defmodule Stressgrid.Generator.TcpDevice do
     {:noreply,
      device
      |> Device.recycle()
-     |> Device.inc_counter(reason |> tcp_reason_to_key(), 1)}
+     |> Device.do_inc_counter(reason |> tcp_reason_to_key(), 1)}
   end
 
   def handle_info(
@@ -174,7 +174,7 @@ defmodule Stressgrid.Generator.TcpDevice do
       {:error, reason} ->
         device
         |> Device.recycle()
-        |> Device.inc_counter(reason |> tcp_reason_to_key(), 1)
+        |> Device.do_inc_counter(reason |> tcp_reason_to_key(), 1)
     end
   end
 

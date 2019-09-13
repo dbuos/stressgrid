@@ -64,11 +64,11 @@ defmodule Stressgrid.Generator.UdpDevice do
       case :gen_udp.send(socket, ip, port, datagram) do
         :ok ->
           device
-          |> Device.inc_counter("datagram_count" |> String.to_atom(), 1)
+          |> Device.do_inc_counter("datagram_count" |> String.to_atom(), 1)
 
         {:error, reason} ->
           device
-          |> Device.inc_counter(reason |> udp_reason_to_key(), 1)
+          |> Device.do_inc_counter(reason |> udp_reason_to_key(), 1)
       end
 
     {:reply, :ok, device}
@@ -136,7 +136,7 @@ defmodule Stressgrid.Generator.UdpDevice do
       {:error, reason} ->
         device
         |> Device.recycle()
-        |> Device.inc_counter(reason |> udp_reason_to_key(), 1)
+        |> Device.do_inc_counter(reason |> udp_reason_to_key(), 1)
     end
   end
 

@@ -228,7 +228,7 @@ defmodule Stressgrid.Generator.GunDevice do
 
     {:noreply,
      device
-     |> Device.inc_counter("conn_count" |> String.to_atom(), 1)
+     |> Device.do_inc_counter("conn_count" |> String.to_atom(), 1)
      |> Device.do_stop_timing(:conn)}
   end
 
@@ -260,7 +260,7 @@ defmodule Stressgrid.Generator.GunDevice do
     {:noreply,
      device
      |> Device.recycle()
-     |> Device.inc_counter(reason |> gun_reason_to_key(), 1)}
+     |> Device.do_inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
   def handle_info(
@@ -286,7 +286,7 @@ defmodule Stressgrid.Generator.GunDevice do
 
     device =
       device
-      |> Device.inc_counter("response_count" |> String.to_atom(), 1)
+      |> Device.do_inc_counter("response_count" |> String.to_atom(), 1)
 
     {:noreply, device}
   end
@@ -327,7 +327,7 @@ defmodule Stressgrid.Generator.GunDevice do
     {:noreply,
      device
      |> Device.recycle()
-     |> Device.inc_counter(reason |> gun_reason_to_key(), 1)}
+     |> Device.do_inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
   def handle_info(
@@ -341,7 +341,7 @@ defmodule Stressgrid.Generator.GunDevice do
     {:noreply,
      device
      |> Device.recycle()
-     |> Device.inc_counter(reason |> gun_reason_to_key(), 1)}
+     |> Device.do_inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
   def handle_info(
@@ -412,7 +412,7 @@ defmodule Stressgrid.Generator.GunDevice do
     {:noreply,
      device
      |> Device.recycle()
-     |> Device.inc_counter(reason |> gun_reason_to_key(), 1)}
+     |> Device.do_inc_counter(reason |> gun_reason_to_key(), 1)}
   end
 
   def handle_info(
