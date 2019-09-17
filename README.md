@@ -35,7 +35,7 @@ Each generator is responsible for the metrics of its own utilization, with two k
 
 If you are using AWS, the easiest way to start using Stressgrid is by deploying it into your target VPC with [Terraform](https://www.terraform.io/). The prerequisites are Terraform 0.12 or higher and curl. By default, for the coordinator and the generator, the Terraform script will use the public AMIs prepared by the Stressgrid team based on the latest release:
 
-    $ cd terraform
+    $ cd terraform/aws
     $ terraform init
     $ terraform apply
 
@@ -143,7 +143,7 @@ To create an EC2 AMI for the coordinator:
 To create an GCP image for the coordinator:
 
     $ cd coordinator
-    $ ./packer.sh -only=googlecompute -var gcp_project_id=your_project_id
+    $ ./packer.sh -only=googlecompute -var gcp_project_id=_your_project_id_ -var gcp_image_bucket=_your_image_bucket_
 
 To create an EC2 AMI for the generator:
 
@@ -153,7 +153,7 @@ To create an EC2 AMI for the generator:
 To create an GCP image for the generator:
 
     $ cd generator
-    $ ./packer.sh -only=googlecompute -var gcp_project_id=your_project_id
+    $ ./packer.sh -only=googlecompute -var gcp_project_id=_your_project_id_ -var gcp_image_bucket=_your_image_bucket_
 
 # Launching cloud instances for generator and the coordinator
 
