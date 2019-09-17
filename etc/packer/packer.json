@@ -2,7 +2,8 @@
   "variables": {
     "git_hash": "",
     "release": "",
-    "gcp_project_id": "stressgrid"
+    "gcp_project_id": "stressgrid",
+    "gcp_image_bucket": "stressgrid"
   },
   "builders": [
     {
@@ -39,6 +40,7 @@
       "machine_type": "n1-standard-1",
       "ssh_username": "ubuntu",
       "image_name": "stressgrid-{{user `release`}}-amd64-{{user `git_hash`}}",
+      "image_family": "stressgrid-{{user `release`}}",
       "image_description": "Stressgrid {{user `release`}} ({{user `git_hash`}})"
     }
   ],
@@ -55,6 +57,14 @@
       ],
       "execute_command": "chmod +x {{ .Path }}; sudo {{ .Vars }} {{ .Path }}",
       "script": "init.sh"
+    }
+  ],
+  "post-processors": [
+    {
+      "type": "googlecompute-export",
+      "paths": [
+        "gs://{{user `gcp_image_bucket`}}/{{user `release`}}-amd64-latest.tar.gz"
+      ]
     }
   ]
 }

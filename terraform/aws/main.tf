@@ -138,7 +138,7 @@ resource "aws_instance" "coordinator" {
   ami                         = data.aws_ami.coordinator.id
   instance_type               = var.coordinator_instance_type
   key_name                    = var.key_name
-  user_data                   = templatefile("${path.module}/coordinator_init.sh", { region = var.region })
+  user_data                   = templatefile("${path.module}/../coordinator_init.sh", { region = var.region })
   iam_instance_profile        = aws_iam_instance_profile.coordinator.id
   vpc_security_group_ids      = [aws_security_group.coordinator.id]
   associate_public_ip_address = true
@@ -158,7 +158,7 @@ resource "aws_launch_configuration" "generator" {
   image_id                    = data.aws_ami.generator.id
   instance_type               = var.generator_instance_type
   key_name                    = var.key_name
-  user_data                   = templatefile("${path.module}/generator_init.sh", { coordinator_dns = aws_instance.coordinator.private_dns })
+  user_data                   = templatefile("${path.module}/../generator_init.sh", { coordinator_dns = aws_instance.coordinator.private_dns })
   security_groups             = [aws_security_group.generator.id]
   associate_public_ip_address = false
 }
