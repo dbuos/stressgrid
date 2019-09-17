@@ -18,9 +18,8 @@ variable network {
   type = "string"
 }
 
-variable project_id {
-  type    = "string"
-  default = "stressgrid"
+variable project {
+  type = "string"
 }
 
 variable image_bucket {
@@ -44,7 +43,7 @@ variable coordinator_machine_type {
 }
 
 provider "google" {
-  project = var.project_id
+  project = var.project
   region  = var.region
   zone    = var.zone
 }
