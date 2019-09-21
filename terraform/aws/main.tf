@@ -160,7 +160,7 @@ resource "aws_launch_configuration" "generator" {
   key_name                    = var.key_name
   user_data                   = templatefile("${path.module}/../generator_init.sh", { coordinator_dns = aws_instance.coordinator.private_dns })
   security_groups             = [aws_security_group.generator.id]
-  associate_public_ip_address = false
+  associate_public_ip_address = true
 }
 
 resource "aws_autoscaling_group" "generator" {
