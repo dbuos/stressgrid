@@ -62,6 +62,7 @@
   "post-processors": [
     {
       "type": "googlecompute-export",
+      "only": ["googlecompute"],
       "paths": [
         "gs://{{user `gcp_image_bucket`}}/{{user `release`}}-amd64-latest.tar.gz"
       ]
