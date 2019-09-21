@@ -18,15 +18,10 @@ defmodule Stressgrid.Coordinator.Application do
     generators_port = System.get_env() |> Map.get("PORT", "9696") |> String.to_integer()
     management_port = System.get_env() |> Map.get("PORT", "8000") |> String.to_integer()
 
-    writer_configs =
-      [{CsvReportWriter, []}] ++
-        case cloudwatch_region() do
-          nil ->
-            []
-
-          cloudwatch_region ->
-            [{CloudWatchReportWriter, [cloudwatch_region]}]
-        end
+    writer_configs = [
+      {CsvReportWriter, []},
+      {CloudWatchReportWriter, []}
+    ]
 
     children = [
       {Registry, keys: :duplicate, name: ManagementConnection},
@@ -70,10 +65,5 @@ defmodule Stressgrid.Coordinator.Application do
           {:priv_dir, :coordinator, "management", [{:mimetypes, :cow_mimetypes, :all}]}}
        ]}
     ])
-  end
-
-  defp cloudwatch_region do
-    System.get_env()
-    |> Map.get("CW_REGION")
   end
 end
