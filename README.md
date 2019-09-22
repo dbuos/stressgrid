@@ -117,7 +117,7 @@ When started, it opens port 8000 for the management website, and port 9696 for g
 - generators are enabled to connect to port 9696 of the coordinator;
 - generators are enabled to connect to your target instances.
 
-To enable the Amazon CloudWatch report writer, set `CW_REGION` environment variable to specify the region where you would like for the metrics to be written. You will also need `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables, or your EC2 instance should have an IAM role associated with it. The only required permission is `cloudwatch:PutMetricData`. If you are using our Terraform script, it will set the coordinator EC2 role with that permission.
+When running in EC2 metrics can be reported to Amazon CloudWatch. To enable this your EC2 instance should have an IAM role associated with it. The only required permission is `cloudwatch:PutMetricData`. If you are using our Terraform script, it will set the coordinator EC2 role with that permission.
 
 # Running the generator(s)
 
@@ -157,17 +157,11 @@ To create an GCP image for the generator:
 
 # Launching cloud instances for generator and the coordinator
 
-When launching coordinator and generator instances, you will need to pass the corresponding configuration using [EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html) or [GCP startup script](https://cloud.google.com/compute/docs/startupscript).
+When launching generator instances, you will need to pass the corresponding configuration using [EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html) or [GCP startup script](https://cloud.google.com/compute/docs/startupscript).
 
 If you are using our Terraform script, it will set this up for you.
 
-Example for the coordinator:
-
-    #!/bin/bash
-    echo "CW_REGION=us-west-1" > /etc/default/stressgrid-coordinator.env
-    service stressgrid-coordinator restart
-
-Example for the generator:
+Example:
 
     #!/bin/bash
     echo "COORDINATOR_URL=ws://ip-172-31-22-7.us-west-1.compute.internal:9696" > /etc/default/stressgrid-generator.env

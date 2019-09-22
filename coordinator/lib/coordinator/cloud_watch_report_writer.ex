@@ -3,15 +3,18 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
 
   alias Stressgrid.Coordinator.{ReportWriter, CloudWatchReportWriter, GeneratorTelemetry}
 
+  @meta_data_placement_availability_zone "http://169.254.169.254/latest/meta-data/placement/availability-zone"
   @behaviour ReportWriter
 
   require Logger
 
   defstruct [:region]
 
-  def init(region) do
-    %CloudWatchReportWriter{region: region}
+  def init() do
+    %CloudWatchReportWriter{region: detect_ec2_region()}
   end
+
+  def write_hists(_, _, %CloudWatchReportWriter{region: nil} = writer, _), do: writer
 
   def write_hists(id, _, %CloudWatchReportWriter{region: region} = writer, hists) do
     :ok =
@@ -34,6 +37,8 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
     writer
   end
 
+  def write_scalars(_, _, %CloudWatchReportWriter{region: nil} = writer, _), do: writer
+
   def write_scalars(id, _, %CloudWatchReportWriter{region: region} = writer, scalars) do
     :ok =
       put_metric_data(
@@ -46,6 +51,9 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
 
     writer
   end
+
+  def write_generator_telemetries(_, _, %CloudWatchReportWriter{region: nil} = writer, _),
+    do: writer
 
   def write_generator_telemetries(
         id,
@@ -71,6 +79,8 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
     writer
   end
 
+  def finish(result_info, _, %CloudWatchReportWriter{region: nil}), do: result_info
+
   def finish(result_info, id, %CloudWatchReportWriter{region: region}) do
     cw_url =
       "https://#{region}.console.aws.amazon.com/cloudwatch/home" <>
@@ -79,11 +89,11 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
     result_info |> Map.merge(%{"cw_url" => cw_url})
   end
 
-  def put_metric_data(_, []) do
+  defp put_metric_data(_, []) do
     :ok
   end
 
-  def put_metric_data(region, datum) do
+  defp put_metric_data(region, datum) do
     params = %{
       "Action" => "PutMetricData",
       "Version" => "2010-08-01",
@@ -182,6 +192,17 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
           :count
         end
       end
+    end
+  end
+
+  defp detect_ec2_region do
+    with {:ok, %HTTPoison.Response{body: body}} <-
+           HTTPoison.get(@meta_data_placement_availability_zone),
+         [_, region] <- Regex.run(~r/(.*)[a-z]$/, body) do
+      region
+    else
+      _ ->
+        nil
     end
   end
 end

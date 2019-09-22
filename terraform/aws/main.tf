@@ -138,7 +138,6 @@ resource "aws_instance" "coordinator" {
   ami                         = data.aws_ami.coordinator.id
   instance_type               = var.coordinator_instance_type
   key_name                    = var.key_name
-  user_data                   = templatefile("${path.module}/../coordinator_init.sh", { region = var.region })
   iam_instance_profile        = aws_iam_instance_profile.coordinator.id
   vpc_security_group_ids      = [aws_security_group.coordinator.id]
   associate_public_ip_address = true
