@@ -22,7 +22,7 @@ variable project {
   type = "string"
 }
 
-variable image_bucket {
+variable image_project {
   type    = "string"
   default = "stressgrid"
 }
@@ -56,28 +56,14 @@ data "google_compute_network" "stressgrid_network" {
   name = var.network
 }
 
-resource "google_compute_image" "coordinator_latest" {
-  name  = "coordinator-latest"
-
-  raw_disk {
-    source = "https://storage.googleapis.com/${var.image_bucket}/coordinator-amd64-latest.tar.gz"
-  }
-
-  timeouts {
-    create = "60m"
-  }
+data "google_compute_image" "generator_latest" {
+  family  = "stressgrid-generator"
+  project = var.image_project
 }
 
-resource "google_compute_image" "generator_latest" {
-  name  = "generator-latest"
-
-  raw_disk {
-    source = "https://storage.googleapis.com/${var.image_bucket}/generator-amd64-latest.tar.gz"
-  }
-
-  timeouts {
-    create = "60m"
-  }
+data "google_compute_image" "coordinator_latest" {
+  family  = "stressgrid-coordinator"
+  project = var.image_project
 }
 
 resource "google_compute_firewall" "coordinator_management" {
@@ -112,7 +98,7 @@ resource "google_compute_instance" "coordinator" {
 
   boot_disk {
     initialize_params {
-      image = google_compute_image.coordinator_latest.self_link
+      image = data.google_compute_image.coordinator_latest.self_link
     }
   }
 
@@ -131,7 +117,7 @@ resource "google_compute_instance_template" "generator" {
   machine_type = var.generator_machine_type
 
   disk {
-    source_image = google_compute_image.generator_latest.self_link
+    source_image = data.google_compute_image.generator_latest.self_link
     boot         = true
   }
 

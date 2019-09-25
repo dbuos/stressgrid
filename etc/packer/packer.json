@@ -58,14 +58,5 @@
       "execute_command": "chmod +x {{ .Path }}; sudo {{ .Vars }} {{ .Path }}",
       "script": "init.sh"
     }
-  ],
-  "post-processors": [
-    {
-      "type": "googlecompute-export",
-      "only": ["googlecompute"],
-      "paths": [
-        "gs://{{user `gcp_image_bucket`}}/{{user `release`}}-amd64-latest.tar.gz"
-      ]
-    }
   ]
 }
