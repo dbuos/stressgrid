@@ -71,7 +71,7 @@ In addition, you can specify the following optional variables:
 - `generator_instance_type`: the generator instance type, defaults to *c5.xlarge* in EC2 and *n1-standard-4* in GCP;
 - `coordinator_instance_type`: the coordinator instance type, defaults to *t2.micro* in EC2 and *n1-standard-1* in GCP;
 - `ami_owner`: owner's AWS account ID to use when looking for AMIs, defaults to *198789150561* (offical Stressgrid account);
-- `key_name`: name of the SSH key pair to use with coordinator and generator instances, defaults to no SSH access;
+- `key_name`: name of the EC2 SSH key pair to use with coordinator and generator instances, defaults to no SSH access;
 - `vpc_id`: the ID for the target VPC where Stressgrid will be created, defaults to default VPC;
 - `image_project`: GCP project to use when looking for images, defaults to *stressgrid* (offical Stressgrid project);
 - `network`: GCP network to use for Stressgrid, defaults to *default*.
