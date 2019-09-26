@@ -18,9 +18,6 @@ build_coordinator:
     - mix deps.get
     - mix release
     - popd
-  artifacts:
-    paths:
-      - coordinator/_build/prod/rel/coordinator/releases/*/coordinator.tar.gz
 
 build_generator:
   stage: build
@@ -33,9 +30,6 @@ build_generator:
     - mix deps.get
     - mix release
     - popd
-  artifacts:
-    paths:
-      - generator/_build/prod/rel/generator/releases/*/generator.tar.gz
 
 build_client:
   stage: build
