@@ -1,7 +1,7 @@
 defmodule Stressgrid.Coordinator.ReportWriter do
-  @callback write_hists(String.t(), Integer.t(), Writer.t(), List.t()) :: Writer.t()
-  @callback write_scalars(String.t(), Integer.t(), Writer.t(), List.t()) :: Writer.t()
-  @callback write_generator_telemetries(String.t(), Integer.t(), Writer.t(), List.t()) ::
-              Writer.t()
-  @callback finish(Map.t(), String.t(), Writer.t()) :: Map.t()
+  @callback write_hists(binary(), integer(), any(), list()) :: any()
+  @callback write_scalars(binary(), integer(), any(), list()) :: any()
+  @callback write_generator_telemetries(binary(), integer(), any(), list()) ::
+              any()
+  @callback finish(map(), binary(), any()) :: map()
 end
