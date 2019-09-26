@@ -33,26 +33,52 @@ Each generator is responsible for the metrics of its own utilization, with two k
 
 # Running with Terraform
 
-If you are using AWS, the easiest way to start using Stressgrid is by deploying it into your target VPC with [Terraform](https://www.terraform.io/). The prerequisites are Terraform 0.12 or higher and curl. By default, for the coordinator and the generator, the Terraform script will use the public AMIs prepared by the Stressgrid team based on the latest release:
+If you are using AWS or GCP, the easiest way to start using Stressgrid is by deploying it with [Terraform](https://www.terraform.io/). The prerequisites are Terraform 0.12 or higher and [curl](https://curl.haxx.se/). By default, for the coordinator and the generator, the Terraform script will use the public images prepared by the Stressgrid team based on the latest release.
+
+## Running in AWS
 
     $ cd terraform/aws
     $ terraform init
-    $ terraform apply
 
-The [apply](https://www.terraform.io/docs/commands/apply.html) command will ask you for the following required Terraform variables:
+The [apply](https://www.terraform.io/docs/commands/apply.html) command will create all necessary resources in AWS. You may need to prefix it with AWS credentials that have admin permissions:
 
-- `key_name`: name of the SSH key pair to use with coordinator and generator instances;
-- `region`: AWS region where the target VPC is located;
-- `vpc_id`: the ID for the target VPC.
+    $ AWS_ACCESS_KEY_ID=<...> AWS_SECRET_ACCESS_KEY=<...> terraform apply
+
+The apply command will ask you for the following required Terraform variable:
+
+- `region`: AWS region where Stressgrid will be created, for example *us-east-1*.
+
+## Running in GCP
+
+    $ cd terraform/aws
+    $ terraform init
+
+The [apply](https://www.terraform.io/docs/commands/apply.html) command will create all necessary resources in GCP. You may need to prefix it with the path to JSON file with credentials that have owner permissions:
+
+    $ GOOGLE_APPLICATION_CREDENTIALS=<...> terraform apply
+
+The apply command will ask you for the following required Terraform variables:
+
+- `project`: name of the GCP project where Stressgrid will be created;
+- `region`: GCP region, for example *us-central1*;
+- `zone`: GCP zone, for example *us-central1-a*.
+
+## Optional Terraform variables
 
 In addition, you can specify the following optional variables:
 
-- `capacity`: the desired number of generators, default is 1;
-- `generator_instance_type`: the generator instance type, defaults to c5.xlarge;
-- `coordinator_instance_type`: the coordinator instance type, defaults to t2.micro;
-- `ami_owner`: owner's AWS account ID to use when looking for AMIs, defaults to 198789150561 (offical Stressgrid account).
+- `capacity`: the desired number of generators, default is *1*;
+- `generator_instance_type`: the generator instance type, defaults to *c5.xlarge* in EC2 and *n1-standard-4* in GCP;
+- `coordinator_instance_type`: the coordinator instance type, defaults to *t2.micro* in EC2 and *n1-standard-1* in GCP;
 
-Once Stressgrid resources are created, you can explicitly add the `stressgrid-generator` security group to the target instance(s) security group for the ports you will be testing. Also, the apply command will output the URL of the Stressgrid management website as `coordinator_url`. Note that by default, this website is available only to your public IP address. You may want to change this by adjusting the `stressgrid-coordinator` security group.
+- `ami_owner`: owner's AWS account ID to use when looking for AMIs, defaults to *198789150561* (offical Stressgrid account);
+- `key_name`: name of the SSH key pair to use with coordinator and generator instances, defaults to no SSH access;
+- `vpc_id`: the ID for the target VPC where Stressgrid will be created, defaults to default VPC;
+
+- `image_project`: GCP project to use when looking for images, defaults to *stressgrid* (offical Stressgrid project);
+- `network`: GCP network to use for Stressgrid, defaults to *default*.
+
+The apply command will output the URL of the Stressgrid management website as `coordinator_url`. Note that by default, this website is available only to your public IP address. You may want to change this by adjusting the `stressgrid-coordinator` security group in EC2 or `coordinator-management` firewall in GCP.
 
 # Running tests
 
@@ -71,7 +97,13 @@ The Stressgrid management dashboard is the place to define and run your test pla
 
 ## Using `sgcli`
 
-Alternatively you can use `sgcli` command line interface. `sgcli run` command will start the run according to the plan specified in arguments. (See `sgcli --help` and `sgcli run --help` for details.) It will then continuously print the telemetry until the run is complete or aborted by pressing ^C. Finally it will output the URL to the results archive. (You can use `wget $(sgcli ...)` to have it downloaded.) `sgcli` will return -1 if errors occured during the run and 0 otherwise.  
+Alternatively you can use `sgcli` command line interface.
+
+`sgcli run` command will start the run according to the plan specified in arguments. See `sgcli --help` and `sgcli run --help` for details.
+
+`sgcli` will continuously print the telemetry until the run is complete or aborted by pressing ^C. Finally it will output the URL to the results archive. You can use `wget $(sgcli ...)` to have it downloaded.
+
+`sgcli` will return -1 if errors occured during the run and 0 otherwise.  
 
 # Building releases
 
@@ -81,6 +113,8 @@ If you are not running in AWS or are unwilling to use Stressgrid's AMIs, you can
 - GNU C compiler (for HDR histograms)
 - Node.js 8.16.0 (for the management dashboard and the CLI)
 
+## Building the coordinator
+
 To build the coordinator:
 
     $ cd coordinator/management/
@@ -89,23 +123,28 @@ To build the coordinator:
     $ MIX_ENV=prod mix deps.get
     $ MIX_ENV=prod mix release
 
+## Building the generator
+
 To build the generator:
 
     $ cd generator/
     $ MIX_ENV=prod mix deps.get
     $ MIX_ENV=prod mix release
 
+## Building the command line interface
+
 To build the `sgcli` command line interface:
 
     $ cd client/
     $ npm install && npm run build
 
-To install the `sgcli` command locally:
+## Installing the command line interface from local build
 
-    $ cd client/
+To install the `sgcli` command:
+
     $ sudo npm link
 
-# Running the coordinator
+# Running the coordinator from local build
 
 To start the coordinator, run:
 
@@ -117,15 +156,17 @@ When started, it opens port 8000 for the management website, and port 9696 for g
 - generators are enabled to connect to port 9696 of the coordinator;
 - generators are enabled to connect to your target instances.
 
+## Amazon CloudWatch metrics
+
 When running in EC2 metrics can be reported to Amazon CloudWatch. To enable this your EC2 instance should have an IAM role associated with it. The only required permission is `cloudwatch:PutMetricData`. If you are using our Terraform script, it will set the coordinator EC2 role with that permission.
 
-# Running the generator(s)
+# Running the generator(s) from local build
 
 For realistic workloads, you will need multiple generators, each running on a dedicated computer or cloud instance. To start the generator, run:
 
     $ _build/prod/rel/generator/bin/generator start
 
-You may use `COORDINATOR_URL` environment variable to specify the coordinator WebSocket URL (defaults to `ws://localhost:9696`). Also you may use `GENERATOR_ID` to override default based on hostname. Note that you may need to adjust Linux kernel settings for optimal generator performance. If you are using our packer script, it will do this for you.
+You may use `COORDINATOR_URL` environment variable to specify the coordinator WebSocket URL (defaults to `ws://localhost:9696`). Also you may use `GENERATOR_ID` to override default based on hostname. Note that you may need to adjust Linux kernel settings for optimal generator performance. If you are using our Terraform or Packer scripts, they will do this for you.
 
 # Creating cloud images for the generator and the coordinator
 
@@ -133,27 +174,37 @@ You can create your own EC2 AMIs or GCP images by using [packer](https://www.pac
 
 By default, Stressgrid images are based on Ubuntu 18.04, so you will need the same OS to build binary releases before running packer scripts, because it simply copies the release. The packer script also includes the necessary Linux kernel settings and the Systemd service.
 
-See packer documentation for the necessary [AWS permissions](https://www.packer.io/docs/builders/amazon.html#iam-task-or-instance-role) and [GCP service account roles](https://packer.io/docs/builders/googlecompute.html#authentication).
+## Creating AMIs in EC2
 
-To create an EC2 AMI for the coordinator:
+See packer documentation for the necessary [AWS permissions](https://www.packer.io/docs/builders/amazon.html#iam-task-or-instance-role) that should be present with specified prefixed credentials.
+
+By default, AMIs are copied to the following regions: us-east-1, us-east-2, us-west-1 and us-west-2.
+
+To create an AMI for the coordinator:
 
     $ cd coordinator
-    $ ./packer.sh -only=amazon-ebs
+    $ AWS_ACCESS_KEY_ID=<...> AWS_SECRET_ACCESS_KEY=<...> ./packer.sh -only=amazon-ebs
 
-To create an GCP image for the coordinator:
+To create an AMI for the generator:
+
+    $ cd generator
+    $ AWS_ACCESS_KEY_ID=<...> AWS_SECRET_ACCESS_KEY=<...> ./packer.sh -only=amazon-ebs
+
+## Creating images in GCP
+
+See packer documentation for the necessary [GCP service account roles](https://packer.io/docs/builders/googlecompute.html#authentication) that should be present with specified prefixed credentials.
+
+Images are created in the project specified with `gcp_project_id` variable.
+
+To create an image for the coordinator:
 
     $ cd coordinator
-    $ ./packer.sh -only=googlecompute -var gcp_project_id=_your_project_id_ -var gcp_image_bucket=_your_image_bucket_
+    $ GOOGLE_APPLICATION_CREDENTIALS=<...> ./packer.sh -only=googlecompute -var gcp_project_id=<...>
 
-To create an EC2 AMI for the generator:
-
-    $ cd generator
-    $ ./packer.sh -only=amazon-ebs
-
-To create an GCP image for the generator:
+To create an image for the generator:
 
     $ cd generator
-    $ ./packer.sh -only=googlecompute -var gcp_project_id=_your_project_id_ -var gcp_image_bucket=_your_image_bucket_
+    $ GOOGLE_APPLICATION_CREDENTIALS=<...> ./packer.sh -only=googlecompute -var gcp_project_id=<...>
 
 # Launching cloud instances for generator and the coordinator
 
