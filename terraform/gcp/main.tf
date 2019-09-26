@@ -14,10 +14,6 @@ variable zone {
   type = "string"
 }
 
-variable network {
-  type = "string"
-}
-
 variable project {
   type = "string"
 }
@@ -25,6 +21,11 @@ variable project {
 variable image_project {
   type    = "string"
   default = "stressgrid"
+}
+
+variable network {
+  type    = "string"
+  default = "default"
 }
 
 variable capacity {
