@@ -11,11 +11,13 @@ variable region {
 }
 
 variable vpc_id {
-  type = "string"
+  type    = "string"
+  default = null
 }
 
 variable key_name {
-  type = "string"
+  type    = "string"
+  default = null
 }
 
 variable capacity {
@@ -46,8 +48,13 @@ data "external" "my_ip" {
   program = ["curl", "https://api.ipify.org?format=json"]
 }
 
+data "aws_vpc" "my_vpc" {
+  id      = var.vpc_id
+  default = var.vpc_id == null
+}
+
 data "aws_subnet_ids" "my_subnets" {
-  vpc_id = var.vpc_id
+  vpc_id = data.aws_vpc.my_vpc.id
 }
 
 data "aws_ami" "coordinator" {
@@ -64,7 +71,7 @@ data "aws_ami" "generator" {
 
 resource "aws_security_group" "coordinator" {
   name   = "stressgrid-coordinator"
-  vpc_id = var.vpc_id
+  vpc_id = data.aws_vpc.my_vpc.id
 
   ingress {
     from_port   = 8000
@@ -90,7 +97,7 @@ resource "aws_security_group" "coordinator" {
 
 resource "aws_security_group" "generator" {
   name   = "stressgrid-generator"
-  vpc_id = var.vpc_id
+  vpc_id = data.aws_vpc.my_vpc.id
 
   egress {
     from_port   = 0
