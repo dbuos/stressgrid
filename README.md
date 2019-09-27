@@ -101,7 +101,120 @@ Alternatively you can use `sgcli` command line interface.
 
 `sgcli` will continuously print the telemetry until the run is complete or aborted by pressing ^C. Finally it will output the URL to the results archive. You can use `wget $(sgcli ...)` to have it downloaded.
 
-`sgcli` will return -1 if errors occured during the run and 0 otherwise.  
+`sgcli` will return -1 if errors occured during the run and 0 otherwise.
+
+# Script examples
+
+## ElasticSearch (HTTP)
+
+```elixir
+# Perform 1,000 PUT/GETs on each HTTP connection
+
+0..1_000 |> Enum.each(fn _ ->
+  # Key space is 2 ^ (3 * 8) = 2 ^ 24 = 16_777_216 keys
+  resource = "/stress/_doc/#{Base.url_encode64(payload(3))}"
+
+  # Value size is 49152 * 4 / 3 = 65_536 bytes
+  doc = %{"value" => Base.encode64(payload(49152))}
+
+  # Measure PUT latency
+
+  start_timing(:put)
+
+  # PUT the document and receive 200 or 201
+
+  {status, _, _} = put(resource, [], {:json, doc})
+  true = status in [200, 201]
+
+  # Count the total and per-second rate for each status code
+
+  inc_counter(:"put_status_#{status}")
+
+  # Measure GET latency
+
+  stop_start_timing(:put, :get)
+
+  # GET and check the document
+
+  {200, _, {:json, json}} = get(resource)
+  ^doc = Map.get(json, "_source")
+
+  stop_timing(:get)
+
+  # Delay for 1 second +/-10%
+
+  delay(1_000, 0.1)
+end)
+```
+
+## Echo server (Websocket)
+
+```elixir
+# Upgrade HTTP connection to Websocket
+
+{:ok, _} = ws_upgrade("/")
+
+# Perform 1,000 echoes on each Websocket connection
+
+0..1_000 |> Enum.each(fn _ ->
+  payload = Base.encode64(payload(768))
+
+  # Measure echo latency
+
+  start_timing(:echo)
+
+  # Send and receive the payload
+
+  :ok = ws_send_text(payload)
+  {:ok, {:text, ^payload}} = ws_receive()
+
+  stop_timing(:echo)
+
+  # Delay for 1 second +/-10%
+
+  delay(1_000, 0.1)
+end)
+```
+
+## Redis (TCP)
+
+```elixir
+# Perform 1,000 SET/GETs on each TCP/IP connection
+
+0..1_000 |> Enum.each(fn _ ->
+  # Key space is 2 ^ (2 * 8) = 2 ^ 16 = 64_536 keys  
+  key = Base.encode64(payload(2))
+
+  # Value size is 768 * 4 / 3 = 1024 bytes
+  value = Base.encode64(payload(768))
+
+  # Measure latency for SET operation
+
+  start_timing(:set)
+
+  # Send "SET key value" and receive OK
+
+  send("SET #{key} #{value}\r\n")
+  {:ok, data} = recv()
+  "+OK\r\n" = IO.chardata_to_string(data)
+
+  # Measure latency for GET operation
+
+  stop_start_timing(:set, :get)
+
+  # Send "GET key" and receive the value
+
+  send("GET #{key}\r\n")
+  {:ok, data} = recv()
+  ["$1024", x, ""] = data |> IO.chardata_to_string() |> String.split("\r\n")
+
+  stop_timing(:get)
+
+  # Delay for 1 second +/-10%
+
+  delay(1_000, 0.1)
+end)
+```
 
 # Building releases
 
