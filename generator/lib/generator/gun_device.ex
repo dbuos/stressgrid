@@ -463,7 +463,8 @@ defmodule Stressgrid.Generator.GunDevice do
         response_status: nil,
         response_headers: nil,
         response_iodata: nil,
-        ws_upgraded: false
+        ws_upgraded: false,
+        received_ws_frames: []
     }
   end
 
