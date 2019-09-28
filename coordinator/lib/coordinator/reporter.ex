@@ -524,6 +524,17 @@ defmodule Stressgrid.Coordinator.Reporter do
     })
   end
 
+  defp add_script_error(json, name, %{
+         script: script,
+         error: :function_clause
+       }) do
+    json
+    |> Map.put(name, %{
+      "script" => script,
+      "description" => "function_clause"
+    })
+  end
+
   defp add_errors(json, _, errors) when map_size(errors) === 0 do
     json
   end
