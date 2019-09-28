@@ -33,8 +33,15 @@ defmodule Stressgrid.Generator.GunDevice do
          ws_send: 1,
          ws_send_text: 1,
          ws_send_binary: 1,
+         ws_send_json: 1,
          ws_receive: 0,
-         ws_receive: 1
+         ws_receive: 1,
+         ws_receive_text: 0,
+         ws_receive_text: 1,
+         ws_receive_binary: 0,
+         ws_receive_binary: 1,
+         ws_receive_json: 0,
+         ws_receive_json: 1
        ]
        |> Enum.sort()}
     ]
