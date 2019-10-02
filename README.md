@@ -141,26 +141,67 @@ Alternatively you can use `sgcli` command line interface.
 end)
 ```
 
-## Echo server (Websocket)
+## Pusher (Websocket)
 
 ```elixir
-# Upgrade HTTP connection to Websocket
-{:ok, _} = ws_upgrade("/")
+app_key = "app_key"
+secret = "secret"
 
-# Perform 1,000 echoes on each Websocket connection
+# Channel space is 2 ^ 8 = 256 channels
+channel = "private-stress-#{Base.encode64(payload(1))}"
+event = "client-stress"
+
+# Upgrade HTTP connection to Websocket
+{:ok, _} = ws_upgrade("/app/#{app_key}?protocol=7")
+
+# Handle pusher:connection_established and retrieve socket ID
+{:ok, %{"event" => "pusher:connection_established", "data" => data}} = ws_receive_json()
+%{"socket_id" => socket_id} = Jason.decode!(data)
+
+# Authenticate socket with private channel
+hmac = Base.encode16(:crypto.hmac(:sha256, secret, "#{socket_id}:#{channel}"), case: :lower)
+
+# Subscribe to private channel
+:ok = ws_send_json(%{
+  "event" => "pusher:subscribe",
+  "data" => %{
+    "auth" => "#{app_key}:#{hmac}",
+    "channel" => channel
+  }
+})
+
+# Handle pusher_internal:subscription_succeeded
+{:ok, %{"channel" => ^channel, "event" => "pusher_internal:subscription_succeeded"}} = ws_receive_json()
+
+# Trigger 1,000 events on each Websocket connection
 0..1_000 |> Enum.each(fn _ ->
 
-  # Payload size is 768 * 4 / 3 = 1024 bytes
-  payload = Base.encode64(payload(768))
+  # Data size is 768 * 4 / 3 = 1024 bytes
+  data = Base.encode64(payload(768))
 
-  # Measure echo latency
-  start_timing(:echo)
+  # Trigger event
+  :ok = ws_send_json(%{
+    "event" => event,
+    "channel" => channel,
+    "data" => data
+  })
 
-  # Send and receive the payload
-  :ok = ws_send_text(payload)
-  {:ok, {:text, ^payload}} = ws_receive()
+  # Count the total and per-second rate for triggered events
+  inc_counter(:trigger)
 
-  stop_timing(:echo)
+  # Fetch received Websocket messages
+  Stream.repeatedly(&ws_fetch_json/0)
+  |> Stream.take_while(&(&1 != nil))
+  |> Enum.each(fn
+    {:ok, %{"event" => ^event, "channel" => ^channel}} ->
+      # Count the total and per-second rate for consumed events
+      inc_counter(:consume)
+
+    {:ok, x} ->
+      # Ignore other events
+      IO.inspect(x)
+      :ok
+  end)
 
   # Delay for 1 second +/-10%
   delay(1_000, 0.1)
