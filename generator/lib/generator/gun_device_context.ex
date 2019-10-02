@@ -87,8 +87,8 @@ defmodule Stressgrid.Generator.GunDeviceContext do
         {:ok, {:text, text}} ->
           {:ok, text}
 
-        error ->
-          error
+        r ->
+          r
       end
     end
   end
@@ -99,8 +99,8 @@ defmodule Stressgrid.Generator.GunDeviceContext do
         {:ok, {:binary, binary}} ->
           {:ok, binary}
 
-        error ->
-          error
+        r ->
+          r
       end
     end
   end
@@ -111,8 +111,50 @@ defmodule Stressgrid.Generator.GunDeviceContext do
         {:ok, json} ->
           Jason.decode(json)
 
-        error ->
-          error
+        r ->
+          r
+      end
+    end
+  end
+
+  defmacro ws_fetch() do
+    quote do
+      GunDevice.ws_fetch(var!(device_pid))
+    end
+  end
+
+  defmacro ws_fetch_binary() do
+    quote do
+      case ws_fetch() do
+        {:ok, {:binary, binary}} ->
+          {:ok, binary}
+
+        r ->
+          r
+      end
+    end
+  end
+
+  defmacro ws_fetch_text() do
+    quote do
+      case ws_fetch() do
+        {:ok, {:text, text}} ->
+          {:ok, text}
+
+        r ->
+          r
+      end
+    end
+  end
+
+  defmacro ws_fetch_json() do
+    quote do
+      case ws_fetch_text() do
+        {:ok, json} ->
+          Jason.decode(json)
+
+        r ->
+          r
       end
     end
   end
