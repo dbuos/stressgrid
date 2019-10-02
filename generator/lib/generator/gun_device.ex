@@ -41,7 +41,11 @@ defmodule Stressgrid.Generator.GunDevice do
          ws_receive_binary: 0,
          ws_receive_binary: 1,
          ws_receive_json: 0,
-         ws_receive_json: 1
+         ws_receive_json: 1,
+         ws_fetch: 0,
+         ws_fetch_binary: 0,
+         ws_fetch_text: 0,
+         ws_fetch_json: 0
        ]
        |> Enum.sort()}
     ]
@@ -105,6 +109,14 @@ defmodule Stressgrid.Generator.GunDevice do
   def ws_receive(pid, timeout) do
     if Process.alive?(pid) do
       GenServer.call(pid, :ws_receive, timeout)
+    else
+      exit(:device_terminated)
+    end
+  end
+
+  def ws_fetch(pid) do
+    if Process.alive?(pid) do
+      GenServer.call(pid, :ws_fetch)
     else
       exit(:device_terminated)
     end
@@ -223,6 +235,22 @@ defmodule Stressgrid.Generator.GunDevice do
       ) do
     {:noreply,
      %{device | waiting_ws_receive_froms: waiting_ws_receive_froms ++ [ws_receive_from]}}
+  end
+
+  def handle_call(
+        :ws_fetch,
+        _,
+        %GunDevice{received_ws_frames: [frame | received_ws_frames]} = device
+      ) do
+    {:reply, {:ok, frame}, %{device | received_ws_frames: received_ws_frames}}
+  end
+
+  def handle_call(
+        :ws_fetch,
+        _,
+        device
+      ) do
+    {:reply, nil, device}
   end
 
   def handle_info(
