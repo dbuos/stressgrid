@@ -51,7 +51,7 @@ defmodule Stressgrid.Generator.GunDeviceContext do
     end
   end
 
-  defmacro ws_send(frame) when is_atom(frame) or is_tuple(frame) do
+  defmacro ws_send(frame) do
     quote do
       GunDevice.ws_send(var!(device_pid), unquote(frame))
     end
@@ -69,9 +69,51 @@ defmodule Stressgrid.Generator.GunDeviceContext do
     end
   end
 
+  defmacro ws_send_json(json) do
+    quote do
+      ws_send_text(Jason.encode!(unquote(json)))
+    end
+  end
+
   defmacro ws_receive(timeout \\ 5000) do
     quote do
       GunDevice.ws_receive(var!(device_pid), unquote(timeout))
+    end
+  end
+
+  defmacro ws_receive_text(timeout \\ 5000) do
+    quote do
+      case ws_receive(unquote(timeout)) do
+        {:ok, {:text, text}} ->
+          {:ok, text}
+
+        error ->
+          error
+      end
+    end
+  end
+
+  defmacro ws_receive_binary(timeout \\ 5000) do
+    quote do
+      case ws_receive(unquote(timeout)) do
+        {:ok, {:binary, binary}} ->
+          {:ok, binary}
+
+        error ->
+          error
+      end
+    end
+  end
+
+  defmacro ws_receive_json(timeout \\ 5000) do
+    quote do
+      case ws_receive_text(unquote(timeout)) do
+        {:ok, json} ->
+          Jason.decode(json)
+
+        error ->
+          error
+      end
     end
   end
 end
