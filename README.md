@@ -197,9 +197,8 @@ hmac = Base.encode16(:crypto.hmac(:sha256, secret, "#{socket_id}:#{channel}"), c
       # Count the total and per-second rate for consumed events
       inc_counter(:consume)
 
-    {:ok, x} ->
+    {:ok, _} ->
       # Ignore other events
-      IO.inspect(x)
       :ok
   end)
 
