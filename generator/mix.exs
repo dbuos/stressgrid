@@ -22,7 +22,8 @@ defmodule Stressgrid.Generator.Mixfile do
     [
       {:gun, "~> 1.3.0"},
       {:hdr_histogram, "~> 0.3.2"},
-      {:jason, "~> 1.1"}
+      {:jason, "~> 1.1"},
+      {:bertex, "~> 1.3"}
     ]
   end
 end
