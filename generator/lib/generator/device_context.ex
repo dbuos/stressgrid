@@ -3,6 +3,8 @@ defmodule Stressgrid.Generator.DeviceContext do
 
   alias Stressgrid.Generator.{Device}
 
+  use Bitwise
+
   defmacro start_timing(key) do
     quote do
       Device.start_timing(var!(device_pid), unquote(key))
@@ -39,10 +41,25 @@ defmodule Stressgrid.Generator.DeviceContext do
     Process.sleep(trunc(milliseconds + deviation / 2 - deviation * :rand.uniform()))
   end
 
-  def payload(size) do
+  def random_bits(size) when size > 0 do
+    shift = rem(size, 8)
+
+    if shift == 0 do
+      random_bytes(div(size, 8))
+    else
+      <<head::size(8), bytes::binary>> = random_bytes(div(size, 8) + 1)
+      <<head >>> (8 - shift)::size(8), bytes::binary>>
+    end
+  end
+
+  def random_bytes(size) when size > 0 do
     {:ok, random} = File.open("/dev/urandom", [:read])
-    payload = IO.binread(random, size)
+    bytes = IO.binread(random, size)
     :ok = File.close(random)
-    payload
+    bytes
+  end
+
+  def payload(size) do
+    random_bytes(size)
   end
 end

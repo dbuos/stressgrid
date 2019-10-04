@@ -217,7 +217,9 @@ defmodule Stressgrid.Generator.Device do
        [
          delay: 1,
          delay: 2,
-         payload: 1
+         payload: 1,
+         random_bits: 1,
+         random_bytes: 1
        ]
        |> Enum.sort()}
 

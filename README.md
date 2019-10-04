@@ -111,11 +111,11 @@ Alternatively you can use `sgcli` command line interface.
 # Perform 1,000 PUT/GETs on each HTTP connection
 0..1_000 |> Enum.each(fn _ ->
 
-  # Key space is 2 ^ (3 * 8) = 2 ^ 24 = 16_777_216 keys
-  resource = "/stress/_doc/#{Base.url_encode64(payload(3))}"
+  # Key space is 2 ^ 24 = 16_777_216 keys
+  resource = "/stress/_doc/#{Base.url_encode64(random_bits(24), padding: false)}"
 
-  # Value size is 49152 * 4 / 3 = 65_536 bytes
-  doc = %{"value" => Base.encode64(payload(49152))}
+  # Value size is 49_152 * 4 / 3 = 65_536 bytes
+  doc = %{"value" => Base.encode64(random_bytes(49_152), padding: false)}
 
   # Measure PUT latency
   start_timing(:put)
@@ -147,8 +147,8 @@ end)
 app_key = "app_key"
 secret = "secret"
 
-# Channel space is 2 ^ 8 = 256 channels
-channel = "private-stress-#{Base.encode64(payload(1))}"
+# Channel space is 2 ^ 6 = 64 channels
+channel = "private-stress-#{Base.url_encode64(random_bits(6), padding: false)}"
 event = "client-stress"
 
 # Upgrade HTTP connection to Websocket
@@ -177,7 +177,7 @@ hmac = Base.encode16(:crypto.hmac(:sha256, secret, "#{socket_id}:#{channel}"), c
 0..1_000 |> Enum.each(fn _ ->
 
   # Data size is 768 * 4 / 3 = 1024 bytes
-  data = Base.encode64(payload(768))
+  data = Base.encode64(random_bytes(768), padding: false)
 
   # Trigger event
   :ok = ws_send_json(%{
@@ -213,11 +213,11 @@ end)
 # Perform 1,000 SET/GETs on each TCP/IP connection
 0..1_000 |> Enum.each(fn _ ->
 
-  # Key space is 2 ^ (2 * 8) = 2 ^ 16 = 64_536 keys  
-  key = Base.encode64(payload(2))
+  # Key space is 2 ^ 16 = 64_536 keys  
+  key = Base.encode64(random_bits(16), padding: false)
 
   # Value size is 768 * 4 / 3 = 1024 bytes
-  value = Base.encode64(payload(768))
+  value = Base.encode64(random_bytes(768), padding: false)
 
   # Measure latency for SET operation
   start_timing(:set)
