@@ -242,7 +242,7 @@ end)
 end)
 ```
 
-### DNS (UDP)
+## DNS (UDP)
 
 ```elixir
 # Use all of 16-bit ID space
