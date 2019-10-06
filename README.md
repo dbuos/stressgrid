@@ -245,11 +245,11 @@ end)
 ## DNS (UDP)
 
 ```elixir
+# Name to resolve
+name = "stressgrid.com"
+
 # Use all of 16-bit ID space
 0..0xffff |> Enum.each(fn id ->
-
-  # Name to resolve
-  name = "stressgrid.com"
 
   # Encode QNAME 
   qname = name
