@@ -242,6 +242,92 @@ end)
 end)
 ```
 
+### DNS (UDP)
+
+```elixir
+# Use all of 16-bit ID space
+0..0xffff |> Enum.each(fn id ->
+
+  # Name to resolve
+  name = "stressgrid.com"
+
+  # Encode QNAME 
+  qname = name
+  |> String.split(".")
+  |> Enum.reduce(<<>>, fn n, a ->
+    <<
+      a :: binary,
+      byte_size(n) :: size(8), # LENGTH
+      n :: binary # DATA
+    >>
+  end)
+
+  # Encode question
+  question = <<
+    qname :: binary, # QNAME
+    0x00, # Terminate QNAME
+    0x0001 :: size(16), # QTYPE
+    0x0001 :: size(16)  # QCLASS
+  >>
+
+  # Encode request
+  request = <<
+    id :: size(16), # ID
+    0x0100 :: size(16), # Flags
+    1 :: size(16), # Number of questions
+    0 :: size(16), # Number of answers
+    0 :: size(16), # Number of authority records
+    0 :: size(16), # Number of additional records
+    question :: binary # Question
+  >>
+
+  # Measure resolve latency
+  start_timing(:resolve)
+
+  # Send UDP datagram
+  :ok = send(request)
+
+  # Receive UDP datagram
+  {:ok, response} = recv()
+
+  stop_timing(:resolve)
+
+  # Decode response
+  question_size = byte_size(question)
+  <<
+    ^id :: size(16),
+    0x8180 :: size(16), # Flags
+    1 :: size(16), # Number of questions
+    answers_num :: size(16), # Number of answers
+    _ :: size(16), # Number of authority records
+    _ :: size(16), # Number of additional records
+    _ :: binary - size(question_size), # Question
+    answers :: binary
+  >> = response
+
+  # Decode answers
+  Enum.reduce(0..(answers_num - 1), answers, fn _, answer ->
+    <<
+      0xc00c :: size(16), # NAME
+      0x0001 :: size(16), # TYPE
+      0x0001 :: size(16), # CLASS
+      _ :: size(32), # TTL
+      4 :: size(16), # RDLENGTH
+      data :: binary - size(4), # RDDATA
+      rest :: binary
+    >> = answer
+
+    <<a0 :: size(8), a1 :: size(8), a2 :: size(8), a3 :: size(8)>> = data
+    ipv4_address = :inet.ntoa({a0, a1, a2, a3})
+
+    rest
+  end)
+
+  # Delay for 1 second +/-10%
+  delay(900, 0.1)
+end)
+```
+
 # Building releases
 
 If you are not running in AWS or are unwilling to use Stressgrid's AMIs, you can build the coordinator and the generator releases yourself. To build Stressgrid releases you’ll need the following:
