@@ -2,6 +2,7 @@ import * as filesize from 'filesize';
 import * as _ from 'lodash';
 import { inject, observer } from 'mobx-react';
 import * as React from 'react';
+import CopyToClipboard from 'react-copy-to-clipboard';
 import { Sparklines, SparklinesLine, SparklinesSpots } from 'react-sparklines';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -316,7 +317,10 @@ class App extends React.Component<IAppProps, IAppState> {
                   <td>
                     <FontAwesomeIcon style={{ color: (report.maxCpu > .8) ? "red" : "green" }} icon="cog" />&nbsp;
                     <FontAwesomeIcon style={{ color: (report.hasNonScriptErrors || report.hasScriptErrors) ? "red" : "green" }} icon="flag" />&nbsp;
-                    <span>{id}</span>
+                    <span>{id}</span>&nbsp;
+                    <CopyToClipboard text={id}>
+                      <span title="Click to copy to clipboard"><FontAwesomeIcon icon="copy" /></span>
+                    </CopyToClipboard>
                   </td>
                   <td>{report.name}</td>
                   <td>{Math.trunc(report.maxCpu * 100)} %</td>
