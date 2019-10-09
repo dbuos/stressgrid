@@ -577,6 +577,9 @@ defmodule Stressgrid.Generator.GunDevice do
                     response_iodata
                 end
 
+              {"application", "bert", _} ->
+                {:bert, Bertex.safe_decode(IO.iodata_to_binary(response_iodata))}
+
               _ ->
                 response_iodata
             end
@@ -671,30 +674,25 @@ defmodule Stressgrid.Generator.GunDevice do
     :unknown_error_count
   end
 
-  def prepare_request(headers, body) when is_binary(body) do
+  defp prepare_request(headers, body) when is_binary(body) do
     {:ok, headers, body}
   end
 
-  def prepare_request(headers, {:json, json}) do
+  defp prepare_request(headers, {:json, json}) do
     case Jason.encode(json) do
       {:ok, body} ->
-        headers =
-          headers
-          |> Enum.reject(fn
-            {"content-type", _} -> true
-            {"Content-Type", _} -> true
-            _ -> false
-          end)
-          |> Enum.concat([{"content-type", "application/json; charset=utf-8"}])
-
-        {:ok, headers, body}
+        {:ok, add_content_type_to_headers(headers, "application/json; charset=utf-8"), body}
 
       error ->
         error
     end
   end
 
-  def add_host_to_headers(headers, host) do
+  defp prepare_request(headers, {:bert, bert}) do
+    {:ok, add_content_type_to_headers(headers, "application/bert"), Bertex.encode(bert)}
+  end
+
+  defp add_host_to_headers(headers, host) do
     headers
     |> Enum.reject(fn
       {"host", _} -> true
@@ -702,6 +700,16 @@ defmodule Stressgrid.Generator.GunDevice do
       _ -> false
     end)
     |> Enum.concat([{"host", host}])
+  end
+
+  defp add_content_type_to_headers(headers, content_type) do
+    headers
+    |> Enum.reject(fn
+      {"content-type", _} -> true
+      {"Content-Type", _} -> true
+      _ -> false
+    end)
+    |> Enum.concat([{"content-type", content_type}])
   end
 
   defp transport(protocol) when protocol in [:http10, :http, :http2], do: :tcp
