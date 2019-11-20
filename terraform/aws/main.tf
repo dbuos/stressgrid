@@ -7,36 +7,36 @@ terraform {
 }
 
 variable region {
-  type = "string"
+  type = string
 }
 
 variable vpc_id {
-  type    = "string"
+  type    = string
   default = null
 }
 
 variable key_name {
-  type    = "string"
+  type    = string
   default = null
 }
 
 variable capacity {
-  type    = "string"
+  type    = string
   default = "1"
 }
 
 variable generator_instance_type {
-  type    = "string"
+  type    = string
   default = "c5.xlarge"
 }
 
 variable coordinator_instance_type {
-  type    = "string"
+  type    = string
   default = "t2.micro"
 }
 
 variable ami_owner {
-  type    = "string"
+  type    = string
   default = "198789150561"
 }
 
