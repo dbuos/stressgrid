@@ -1,4 +1,3 @@
-import * as filesize from 'filesize';
 import * as _ from 'lodash';
 import { inject, observer } from 'mobx-react';
 import * as React from 'react';
@@ -7,10 +6,7 @@ import { Sparklines, SparklinesLine, SparklinesSpots } from 'react-sparklines';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 
-import { ReportsStore } from './stores/ReportsStore'
-import { RunStore } from './stores/RunStore'
-import { TelemetryStore } from './stores/TelemetryStore'
-
+import { formatCpu, showCpuWarning, StateStore, } from './stores/StateStore'
 import { Stressgrid } from './Stressgrid';
 
 const defaultScript = `0..100 |> Enum.each(fn _ ->
@@ -39,9 +35,7 @@ const defaultPlan = {
 };
 
 interface IAppProps {
-  telemetryStore?: TelemetryStore;
-  runStore?: RunStore;
-  reportsStore?: ReportsStore;
+  stateStore?: StateStore;
   sg?: Stressgrid;
 }
 
@@ -61,9 +55,7 @@ interface IAppState {
   rampdownSecs: number;
 }
 
-@inject('telemetryStore')
-@inject('runStore')
-@inject('reportsStore')
+@inject('stateStore')
 @inject('sg')
 @observer
 class App extends React.Component<IAppProps, IAppState> {
@@ -86,7 +78,7 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   public render() {
-    const { telemetryStore, runStore, reportsStore } = this.props;
+    const { stateStore } = this.props;
     return (
       <div className="container p-4">
         {this.state.planModal && <span>
@@ -115,14 +107,14 @@ class App extends React.Component<IAppProps, IAppState> {
                   <div className="col">
                     <div className="form-group">
                       <label htmlFor="desizedSize">Desired number of devices</label>
-                      {telemetryStore && <input className="form-control" id="desizedSize" type="text" value={telemetryStore.desiredSize} onChange={this.updateDesiredSize} />}
+                      {stateStore && <input className="form-control" id="desizedSize" type="text" value={stateStore.desiredSize} onChange={this.updateDesiredSize} />}
                     </div>
                   </div>
                   <div className="col">
                     <div className="form-group">
                       <label htmlFor="size">Effective number of devices</label>
-                      <input className="form-control" id="size" type="text" value={_.defaultTo(telemetryStore ? telemetryStore.size : NaN, 0)} readOnly={true} />
-                      <small className="form-text text-muted">Multiples of ramp step size: {telemetryStore ? telemetryStore.rampStepSize : NaN}</small>
+                      <input className="form-control" id="size" type="text" value={_.defaultTo(stateStore ? stateStore.size : NaN, 0)} readOnly={true} />
+                      <small className="form-text text-muted">Multiples of ramp step size: {stateStore ? stateStore.rampStepSize : NaN}</small>
                     </div>
                   </div>
                 </div>
@@ -190,19 +182,19 @@ class App extends React.Component<IAppProps, IAppState> {
               <button className="btn" onClick={this.cancelPlan}>Cancel</button>
             </fieldset>
           </form></span>}
-        {telemetryStore && runStore && !this.state.planModal && <span>
+        {stateStore && !this.state.planModal && <span>
           <h3>Stressgrid</h3>
           <table className="table">
             <tbody>
               <tr>
                 <th scope="row" style={{ width: "30%" }}>Current Run (Plan)</th>
                 <td style={{ width: "40%" }}>
-                  {runStore.id &&
-                    <span>{runStore.id}&nbsp;({runStore.name})</span>
+                  {stateStore.state.run &&
+                    <span>{stateStore.state.run.id}&nbsp;({stateStore.state.run.name})</span>
                   }
                 </td>
                 <td style={{ width: "30%" }}>
-                  {runStore.id ?
+                  {stateStore.state.run ?
                     <button className='btn btn-danger btn-sm' onClick={this.abortRun}>Abort</button> :
                     <button className="btn btn-primary btn-sm" onClick={this.showPlanModal}>Start</button>
                   }
@@ -211,69 +203,47 @@ class App extends React.Component<IAppProps, IAppState> {
               <tr>
                 <th scope="row">State</th>
                 <td>
-                  {runStore.id ?
-                    <b>{runStore.state}</b> :
+                  {stateStore.state.run ?
+                    <b>{stateStore.state.run.state}</b> :
                     <b>idle</b>
                   }
                 </td>
                 <td>
-                  {runStore.id &&
-                    <span>{Math.trunc(_.defaultTo(runStore.remainingMs, 0) / 1000)} seconds remaining</span>
+                  {stateStore.state.run &&
+                    <span>{Math.trunc(_.defaultTo(stateStore.state.run.remaining_ms, 0) / 1000)} seconds remaining</span>
                   }
                 </td>
               </tr>
               <tr>
                 <th scope="row">Generators</th>
-                <td>{telemetryStore.generatorCount}</td>
-                <td>
-                  <Sparklines data={_.reverse(_.clone(telemetryStore.recentGeneratorCount))} height={20}>
-                    <SparklinesLine style={{ fill: "none" }} />
-                    <SparklinesSpots />
-                  </Sparklines>
-                </td>
+                <td>{stateStore.generatorCount}</td>
+                <td />
               </tr>
               <tr>
                 <th scope="row">Active Devices</th>
-                <td>{telemetryStore.activeCount}</td>
+                <td>{stateStore.activeDeviceNumber}</td>
                 <td>
-                  <Sparklines data={_.reverse(_.clone(telemetryStore.recentActiveCount))} height={20}>
+                  <Sparklines data={stateStore.activeDeviceNumberSparkline} height={20}>
                     <SparklinesLine style={{ fill: "none" }} />
                     <SparklinesSpots />
                   </Sparklines>
                 </td>
               </tr>
-              {telemetryStore.lastScriptError && <tr>
+              {stateStore.state.last_script_error && <tr>
                 <th scope="row">Script Error</th>
                 <td colSpan={2}>
-                  <small>{telemetryStore.lastScriptError}</small>&nbsp;
+                  <small>{stateStore.state.last_script_error.description}</small>&nbsp;
                   <FontAwesomeIcon style={{ color: "red" }} icon="flag" />
                 </td>
               </tr>}
-              {telemetryStore.lastErrors && _.map(_.toPairs(telemetryStore.lastErrors), pair => {
-                const recentCounts = pair[1];
-                const type = pair[0];
-                return <tr>
-                  <th scope="row"><samp>{type}</samp> Error Count</th>
-                  <td>
-                    <span>{recentCounts[0]}</span>&nbsp;
-                    <FontAwesomeIcon style={{ color: "red" }} icon="flag" />
-                  </td>
-                  <td>
-                    <Sparklines data={_.reverse(_.clone(recentCounts))} height={20}>
-                      <SparklinesLine style={{ fill: "none" }} />
-                      <SparklinesSpots />
-                    </Sparklines>
-                  </td>
-                </tr>;
-              })}
               <tr>
                 <th scope="row">CPU Utilization</th>
                 <td>
-                  <span>{Math.trunc(telemetryStore.cpu * 100)} %</span>&nbsp;
-                  <FontAwesomeIcon style={{ color: telemetryStore.cpu > .8 ? "red" : "green" }} icon="cog" spin={_.defaultTo(telemetryStore.activeCount, 0) > 0} />
+                  <span>{stateStore.cpu}</span>&nbsp;
+                  {!_.isEmpty(stateStore.state.run) ? <FontAwesomeIcon style={{ color: stateStore.cpuWarning ? "red" : "green" }} icon="cog" spin={true} /> : null}
                 </td>
                 <td>
-                  <Sparklines data={_.reverse(_.clone(telemetryStore.recentCpu))} height={20}>
+                  <Sparklines data={stateStore.cpuSparkline} height={20}>
                     <SparklinesLine style={{ fill: "none" }} />
                     <SparklinesSpots />
                   </Sparklines>
@@ -281,9 +251,9 @@ class App extends React.Component<IAppProps, IAppState> {
               </tr>
               <tr>
                 <th scope="row">Network Receive</th>
-                <td>{filesize(telemetryStore.networkRx)}/sec</td>
+                <td>{stateStore.networkRx}</td>
                 <td>
-                  <Sparklines data={_.reverse(_.clone(telemetryStore.recentNetworkRx))} height={20}>
+                  <Sparklines data={stateStore.networkRxSparkline} height={20}>
                     <SparklinesLine style={{ fill: "none" }} />
                     <SparklinesSpots />
                   </Sparklines>
@@ -291,9 +261,9 @@ class App extends React.Component<IAppProps, IAppState> {
               </tr>
               <tr>
                 <th scope="row">Network Transmit</th>
-                <td>{filesize(telemetryStore.networkTx)}/sec</td>
+                <td>{stateStore.networkTx}</td>
                 <td>
-                  <Sparklines data={_.reverse(_.clone(telemetryStore.recentNetworkTx))} height={20}>
+                  <Sparklines data={stateStore.networkTxSparkline} height={20}>
                     <SparklinesLine style={{ fill: "none" }} />
                     <SparklinesSpots />
                   </Sparklines>
@@ -302,7 +272,7 @@ class App extends React.Component<IAppProps, IAppState> {
             </tbody>
           </table>
           <h3>Reports</h3>
-          {reportsStore && <table className="table">
+          {stateStore.state.reports && <table className="table">
             <thead>
               <tr>
                 <th scope="col" style={{ width: "30%" }}>Run</th>
@@ -312,23 +282,23 @@ class App extends React.Component<IAppProps, IAppState> {
               </tr>
             </thead>
             <tbody>
-              {_.reverse(_.map(reportsStore.reports, (report, id) => {
-                return <tr key={id}>
+              {_.map(stateStore.state.reports, report => {
+                return <tr key={report.id}>
                   <td>
-                    <FontAwesomeIcon style={{ color: (report.maxCpu > .8) ? "red" : "green" }} icon="cog" />&nbsp;
-                    <FontAwesomeIcon style={{ color: (report.hasNonScriptErrors || report.hasScriptErrors) ? "red" : "green" }} icon="flag" />&nbsp;
-                    <span>{id}</span>&nbsp;
-                    <CopyToClipboard text={id}>
+                    <FontAwesomeIcon style={{ color: showCpuWarning(report.maximums.cpu_percent) ? "red" : "green" }} icon="cog" />&nbsp;
+                    <FontAwesomeIcon style={{ color: (report.script_error) ? "red" : "green" }} icon="flag" />&nbsp;
+                    <span>{report.id}</span>&nbsp;
+                    <CopyToClipboard text={report.id}>
                       <span title="Click to copy to clipboard"><FontAwesomeIcon icon="copy" /></span>
                     </CopyToClipboard>
                   </td>
                   <td>{report.name}</td>
-                  <td>{Math.trunc(report.maxCpu * 100)} %</td>
-                  <td>{report.csvUrl ? <a href={report.csvUrl} className='btn btn-outline-info btn-sm mr-1' target='_blank'>CSV</a> : null}
-                    {report.cwUrl ? <a href={report.cwUrl} className='btn btn-outline-info btn-sm mr-1' target='_blank'>CloudWatch</a> : null}
-                    <button data-id={id} className='btn btn-outline-danger btn-sm mr-1' onClick={this.removeReport}>Clear</button></td>
+                  <td>{formatCpu(report.maximums.cpu_percent)}</td>
+                  <td>{report.result.csv_url ? <a href={report.result.csv_url} className='btn btn-outline-info btn-sm mr-1' target='_blank'>CSV</a> : null}
+                    {report.result.cw_url ? <a href={report.result.cw_url} className='btn btn-outline-info btn-sm mr-1' target='_blank'>CloudWatch</a> : null}
+                    <button data-id={report.id} className='btn btn-outline-danger btn-sm mr-1' onClick={this.removeReport}>Clear</button></td>
                 </tr>
-              }))}
+              })}
             </tbody>
           </table>}
         </span>}
@@ -350,8 +320,8 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   private updateDesiredSize = (event: React.SyntheticEvent<HTMLInputElement>) => {
-    if (this.props.telemetryStore) {
-      this.props.telemetryStore.desiredSize = this.parseInt(event.currentTarget.value);
+    if (this.props.stateStore) {
+      this.props.stateStore.desiredSize = this.parseInt(event.currentTarget.value);
     }
   }
 
@@ -407,8 +377,8 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   private runPlan = (event: React.SyntheticEvent<HTMLButtonElement>) => {
-    const { telemetryStore, sg } = this.props;
-    if (sg && telemetryStore) {
+    const { stateStore, sg } = this.props;
+    if (sg && stateStore) {
       if (this.state.advanced) {
         const json = this.state.json;
         try {
@@ -423,8 +393,8 @@ class App extends React.Component<IAppProps, IAppState> {
           const name = this.state.name;
           const port = this.state.port;
           const protocol = this.state.protocol;
-          const size = telemetryStore.size;
-          const rampSteps = telemetryStore.rampSteps;
+          const size = stateStore.size;
+          const rampSteps = stateStore.rampSteps;
           const rampdownStepMs = (this.state.rampdownSecs * 1000) / rampSteps;
           const rampupStepMs = (this.state.rampupSecs * 1000) / rampSteps;
           const sustainMs = (this.state.sustainSecs * 1000);

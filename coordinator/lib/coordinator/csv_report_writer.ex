@@ -1,7 +1,7 @@
 defmodule Stressgrid.Coordinator.CsvReportWriter do
   @moduledoc false
 
-  alias Stressgrid.Coordinator.{ReportWriter, CsvReportWriter, GeneratorTelemetry}
+  alias Stressgrid.Coordinator.{ReportWriter, CsvReportWriter}
 
   @behaviour ReportWriter
 
@@ -14,7 +14,7 @@ defmodule Stressgrid.Coordinator.CsvReportWriter do
     %CsvReportWriter{}
   end
 
-  def write_hists(_, clock, %CsvReportWriter{table: table} = writer, hists) do
+  def write(_, clock, %CsvReportWriter{table: table} = writer, hists, scalars) do
     row =
       hists
       |> Enum.filter(fn {_, hist} ->
@@ -48,62 +48,8 @@ defmodule Stressgrid.Coordinator.CsvReportWriter do
         ]
       end)
       |> Enum.concat()
+      |> Enum.concat(scalars)
       |> Map.new()
-      |> Map.merge(table |> Map.get(clock, %{}))
-
-    %{writer | table: table |> Map.put(clock, row)}
-  end
-
-  def write_scalars(_, clock, %CsvReportWriter{table: table} = writer, scalars) do
-    row =
-      scalars
-      |> Map.new()
-      |> Map.merge(table |> Map.get(clock, %{}))
-
-    %{writer | table: table |> Map.put(clock, row)}
-  end
-
-  def write_generator_telemetries(
-        _,
-        clock,
-        %CsvReportWriter{table: table} = writer,
-        generator_telemetries
-      ) do
-    generator_telemetries_length = length(generator_telemetries)
-
-    average_cpu =
-      if generator_telemetries_length === 0 do
-        0
-      else
-        (generator_telemetries
-         |> Enum.map(fn {_, %GeneratorTelemetry{cpu: cpu}} -> cpu end)
-         |> Enum.sum()) / generator_telemetries_length
-      end
-
-    total_network_rx =
-      generator_telemetries
-      |> Enum.map(fn {_, %GeneratorTelemetry{network_rx: network_rx}} -> network_rx end)
-      |> Enum.sum()
-
-    total_network_tx =
-      generator_telemetries
-      |> Enum.map(fn {_, %GeneratorTelemetry{network_tx: network_tx}} -> network_tx end)
-      |> Enum.sum()
-
-    total_active_device_count =
-      generator_telemetries
-      |> Enum.map(fn {_, %GeneratorTelemetry{active_device_count: active_device_count}} ->
-        active_device_count
-      end)
-      |> Enum.sum()
-
-    row =
-      %{
-        average_cpu: average_cpu,
-        total_network_rx: total_network_rx,
-        total_network_tx: total_network_tx,
-        total_active_device_count: total_active_device_count
-      }
       |> Map.merge(table |> Map.get(clock, %{}))
 
     %{writer | table: table |> Map.put(clock, row)}

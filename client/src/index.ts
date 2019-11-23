@@ -6,8 +6,9 @@ import fs from 'fs';
 import log from 'single-line-log';
 import chalk from 'chalk';
 import filesize from 'filesize';
+import columnify from 'columnify';
 import WS from 'ws';
-import { Stressgrid, IRunPlan } from './Stressgrid'
+import { Stressgrid, IRunPlan, IRun, IStats } from './Stressgrid'
 
 program
   .option('-c, --coordinator-host <string>', 'coordinator host (localhost)')
@@ -60,78 +61,193 @@ if (!process.argv.slice(2).length) {
   program.outputHelp();
 }
 
-function runPlan(coordinatorHost: string, plan: IRunPlan) {
-  let result = 0;
-  let id: string | null = null;
-  const sg = new Stressgrid({
-    init: (grid, reports) => {
-      if (!grid.telemetry.generator_count[0]) {
-        console.error(chalk.red('ERROR:  must have at least one generator'));
-        sg.disconnect();
-        result = -1;
-        return;
-      }
-      if (grid.run) {
-        console.error(chalk.red('ERROR:  already running, please stop current run'));
-        sg.disconnect();
-        result = -1;
-        return;
-      }
-      sg.run(plan);
-    },
-    updateGrid: (grid) => {
-      if (grid.run) {
-        if (id === null) {
-          id = grid.run.id;
-        }
-        else if (id === grid.run.id) {
-          if (grid.telemetry.last_script_error) {
-            log.stderr.clear();
-            console.error(chalk.red('ERROR:  ' + chalk.bold('line ' + grid.telemetry.last_script_error.line + ': ' + grid.telemetry.last_script_error.description)));
-            sg.abortRun();
-          }
-          else {
-            let errors = '';
-            if (grid.telemetry.last_errors) {
-              errors = chalk.red(_.join(_.map(_.toPairs(grid.telemetry.last_errors), pair => {
-                const recentCounts = pair[1];
-                const type = pair[0];
-                return 'ERROR:  ' + chalk.bold(type) + ' occurred ' + chalk.bold(_.defaultTo(recentCounts[0], 0)) + ' times\r\n';
-              }), ''));
-            }
+function generatorCountRows(generatorCount: number) {
+  let color = "green";
+  if (generatorCount === 0) {
+    color = "red";
+  }
+  return [
+    { pos: "0", name: chalk[color]("Available generators"), value: chalk[color].bold(generatorCount.toString()) }
+  ];
+}
 
-            log.stderr(chalk.green(
-              'RUN ID: ' + chalk.bold(id) + '\n\r' +
-              'STATE:  ' + chalk.bold(grid.run.state + ' ' + Math.trunc(grid.run.remaining_ms / 1000).toString() + ' seconds') + ' remaining\r\n' +
-              'ACTIVE: ' + chalk.bold(_.defaultTo(grid.telemetry.active_count[0], 0).toString() + ' devices') + '\r\n' +
-              'CPU:    ' + chalk.bold(Math.trunc(_.defaultTo(grid.telemetry.cpu[0], 0) * 100).toString() + '%') + '\r\n' +
-              'NET RX: ' + chalk.bold(filesize(_.defaultTo(grid.telemetry.network_rx[0], 0)) + '/sec') + '\r\n' +
-              'NET TX: ' + chalk.bold(filesize(_.defaultTo(grid.telemetry.network_tx[0], 0)) + '/sec') + '\r\n' +
-              errors));
-          }
+function runRows(run: IRun | null) {
+  if (run) {
+    return [
+      { pos: "1", name: chalk.green("Run id"), value: chalk.green.bold(run.id) },
+      { pos: "2", name: chalk.green("Run state"), value: chalk.green.bold(run.state) },
+      { pos: "3", name: chalk.green("In-state remaining time"), value: chalk.green.bold(Math.trunc(run.remaining_ms / 1000).toString() + ' seconds') }
+    ];
+  }
+  return [];
+}
+
+const errorCountRegex = /.*_error_?(count|per_second)$/;
+
+const bytesPerSecondRegex = /(.*)_bytes_per_second$/;
+const perSecondRegex = /(.*)_per_second$/;
+const percentRegex = /(.*)_percent$/;
+const microsecondRegex = /(.*)_us$/;
+const countRegex = /(.*)_count$/;
+const numberRegex = /(.*)_number$/;
+
+const redCpuPercent = 80;
+
+function statsRows(liveReport: IStats<number[]> | null) {
+  if (liveReport) {
+    return _.map(liveReport, (values, key) => {
+      let color = "green";
+      if (errorCountRegex.test(key)) {
+        color = "red";
+      }
+      if (key === "cpu_percent") {
+        const value = _.first(values);
+        if (_.isNumber(value) && value >= redCpuPercent) {
+          color = "red";
         }
       }
-    },
-    addReport: (report) => {
-      if (report.id === id) {
-        console.log('http://' + coordinatorHost + ':8000/' + report.result.csv_url);
-        sg.disconnect();
-        if (report.script_error || report.errors) {
-          result = -1;
-        }
-      }
-    },
-    deleteReport: (id: string) => { },
-    disconnected: () => {
-      process.exit(result);
+      return { pos: key, name: chalk[color](statsKey(key)), value: chalk[color].bold(statsValue(key, values)) };
+    });
+  }
+  return [];
+}
+
+function statsKey(key: string) {
+  let r: RegExpExecArray | null;
+  if ((r = bytesPerSecondRegex.exec(key)) !== null) {
+    return _.startCase(r[1]) + ' (throughput)';
+  }
+  if ((r = perSecondRegex.exec(key)) !== null) {
+    return _.startCase(r[1]) + ' (rate)';
+  }
+  if ((r = percentRegex.exec(key)) !== null) {
+    return _.startCase(r[1]) + ' (load)';
+  }
+  if ((r = microsecondRegex.exec(key)) !== null) {
+    return _.startCase(r[1]) + ' (time)';
+  }
+  if ((r = countRegex.exec(key)) !== null) {
+    return _.startCase(r[1]) + ' (count)';
+  }
+  if ((r = numberRegex.exec(key)) !== null) {
+    return _.startCase(r[1]) + ' (number)';
+  }
+
+  return _.startCase(key);
+}
+
+function statsValue(key: string, values: any[]): string {
+  const value = _.first(values);
+  if (_.isNumber(value) && bytesPerSecondRegex.test(key)) {
+    return filesize(value) + '/sec';
+  }
+  if (_.isNumber(value) && perSecondRegex.test(key)) {
+    return value.toString() + ' /sec';
+  }
+  if (_.isNumber(value) && percentRegex.test(key)) {
+    return Math.trunc(value).toString() + ' %';
+  }
+  if (_.isNumber(value) && microsecondRegex.test(key)) {
+    if (value >= 1000000) {
+      return Math.trunc(value / 1000000).toString() + ' seconds';
     }
+    if (value >= 1000) {
+      return Math.trunc(value / 1000).toString() + ' milliseconds';
+    }
+    return value.toString() + ' microseconds';
+  }
+  if (_.isNumber(value) && countRegex.test(key)) {
+    return value.toString();
+  }
+  if (_.isNumber(value) && numberRegex.test(key)) {
+    return value.toString();
+  }
+  if (value === null) {
+    return '-';
+  }
+
+  return value.toString();
+}
+
+function updateScreen(generatorCount: number, run: IRun | null, stats: IStats<number[]> | null) {
+  log.stderr(
+    columnify(
+      _.map(
+        _.sortBy(
+          _.concat(
+            generatorCountRows(generatorCount),
+            runRows(run),
+            statsRows(stats)
+          ),
+          row => row.pos
+        ),
+        row => _.omit(row, 'pos')
+      ),
+      { showHeaders: false }
+    ) +
+    '\n'
+  );
+}
+
+function runPlan(coordinatorHost: string, plan: IRunPlan) {
+  let currentGeneratorCount: number = 0;
+  let currentRun: IRun | null = null;
+  let currentStats: IStats<number[]> | null = null;
+
+  const sg = new Stressgrid({
+    notify: (state) => {
+      if (state.generator_count !== undefined) {
+        currentGeneratorCount = state.generator_count;
+      }
+      if (state.stats !== undefined && state.stats !== null) {
+        currentStats = state.stats;
+      }
+      if (state.run !== undefined && state.run !== null) {
+        currentRun = state.run;
+      }
+      updateScreen(currentGeneratorCount, currentRun, currentStats);
+
+      if (state.reports !== undefined) {
+        const report = _.last(state.reports);
+        if (report && currentRun && report.id === currentRun.id) {
+          log.stderr.clear();
+          log.stderr('');
+          log.stdout('http://' + coordinatorHost + ':8000/' + report.result.csv_url + '\n');
+          sg.disconnect();
+        }
+      }
+      if (state.last_script_error !== undefined && state.last_script_error !== null) {
+        log.stderr.clear();
+        log.stderr(chalk.red('Error in script:  ' + chalk.bold('line ' + state.last_script_error.line + ': ' + state.last_script_error.description) + '\n'));
+        log.stderr(chalk.red('Run aborted!\n'));
+        sg.abortRun();
+        sg.disconnect();
+        process.exitCode = -1;
+      }
+    },
+    init: (state) => {
+      if (state.generator_count !== undefined) {
+        currentGeneratorCount = state.generator_count;
+      }
+      if (state.run !== undefined && state.run !== null) {
+        log.stderr.clear();
+        log.stderr(chalk.red('Please stop current run!\n'));
+        sg.disconnect();
+        process.exitCode = -1;
+      }
+      else {
+        sg.run(plan);
+      }
+    },
+    connected: () => { },
+    disconnected: () => { }
   });
   sg.connect('ws://' + coordinatorHost + ':8000/ws', WS);
   process.on('SIGINT', function () {
     log.stderr.clear();
-    console.error(chalk.red('ABORTED'));
+    log.stderr(chalk.red('Run aborted!\n'));
     sg.abortRun();
     sg.disconnect();
-    result = -1;
+    process.exitCode = -1;
   });
 }

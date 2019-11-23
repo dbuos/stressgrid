@@ -1,40 +1,37 @@
 defmodule Stressgrid.Coordinator.Reporter do
   use GenServer
 
-  alias Stressgrid.Coordinator.{Reporter, ManagementConnection, GeneratorTelemetry}
+  alias Stressgrid.Coordinator.{Reporter, Management, Histogram}
 
   defstruct writer_configs: [],
             run: nil,
-            generator_telemetries: %{},
-            last_script_error: nil,
-            last_errors: %{},
-            aggregated_telemetries: [],
-            aggregated_generator_counts: [],
-            aggregated_last_errors: %{},
             reports: %{}
-
-  @report_interval 60_000
-  @aggregate_interval 1_000
-  @aggregated_max_size 60
 
   defmodule Run do
     defstruct id: nil,
               plan_name: nil,
-              clock: 0,
-              hists: %{},
               counters: %{},
-              prev_counters: %{},
-              max_telemetry: nil,
-              writers: [],
-              report_timer_ref: nil
+              generator_totals: %{},
+              maximums: %{},
+              last_script_error: nil,
+              writers: %{}
   end
 
   defmodule Report do
-    defstruct script_error: nil,
-              errors: nil,
-              plan_name: nil,
-              max_telemetry: nil,
+    defstruct plan_name: nil,
+              maximums: nil,
+              script_error: nil,
               result_json: %{}
+  end
+
+  defmodule Writer do
+    defstruct module: nil,
+              interval_ms: nil,
+              state: nil,
+              timer_ref: nil,
+              clock: 0,
+              hists: %{},
+              prev_counters: %{}
   end
 
   def push_telemetry(generator_id, telemetry) do
@@ -60,133 +57,87 @@ defmodule Stressgrid.Coordinator.Reporter do
     GenServer.cast(__MODULE__, {:clear_stats, conn_id})
   end
 
-  def get_reports_json() do
-    GenServer.call(__MODULE__, :get_reports_json)
-  end
-
-  def get_telemetry_json() do
-    GenServer.call(__MODULE__, :get_telemetry_json)
-  end
-
   def start_link(args) do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
   def init(args) do
-    Process.send_after(self(), :aggregate, @aggregate_interval)
-
     {:ok, %Reporter{writer_configs: args |> Keyword.get(:writer_configs, [])}}
-  end
-
-  def handle_call(:get_reports_json, _, %Reporter{reports: reports} = reporter) do
-    reports_json =
-      reports
-      |> Enum.map(fn {id, report} ->
-        report_to_json(id, report)
-      end)
-
-    {:reply, {:ok, reports_json}, reporter}
-  end
-
-  def handle_call(
-        :get_telemetry_json,
-        _,
-        %Reporter{
-          last_script_error: last_script_error,
-          aggregated_generator_counts: aggregated_generator_counts,
-          aggregated_telemetries: aggregated_telemetries,
-          aggregated_last_errors: aggregated_last_errors
-        } = reporter
-      ) do
-    telemetry_json =
-      %{
-        "generator_count" => aggregated_generator_counts
-      }
-      |> add_script_error("last_script_error", last_script_error)
-      |> add_errors("last_errors", aggregated_last_errors)
-      |> Map.merge(aggregated_telemetries |> GeneratorTelemetry.to_json())
-
-    {:reply, {:ok, telemetry_json}, reporter}
   end
 
   def handle_cast(
         {:push_telemetry, generator_id, telemetry},
-        %Reporter{
-          generator_telemetries: generator_telemetries,
-          run: run,
-          last_errors: last_errors,
-          last_script_error: last_script_error
-        } = reporter
+        %Reporter{run: run} = reporter
       ) do
-    %{counters: push_counters, hists: push_hists, first_script_error: first_script_error} =
+    %{scalars: push_scalars, hists: push_binary_hists, first_script_error: first_script_error} =
       telemetry
-
-    generator_telemetries =
-      generator_telemetries
-      |> Map.put(generator_id, GeneratorTelemetry.new(telemetry))
-
-    max_telemetry =
-      generator_telemetries
-      |> Map.values()
-      |> Enum.reduce(nil, &max_telemetry(&1, &2))
-
-    last_errors =
-      push_counters
-      |> Enum.reduce(last_errors, fn {key, value}, last_errors ->
-        case ~r/(.*)_error_count$/ |> Regex.run(key |> Atom.to_string()) do
-          [_, type] ->
-            type = type |> String.to_atom()
-            count = last_errors |> Map.get(type, 0)
-            last_errors |> Map.put(type, count + value)
-
-          nil ->
-            last_errors
-        end
-      end)
 
     run =
       case run do
-        %Run{counters: counters, hists: hists, max_telemetry: max_telemetry0} = run ->
-          counters =
-            push_counters
-            |> Enum.reduce(counters, fn {key, value}, counters ->
-              counters
-              |> Map.update(key, value, fn c -> c + value end)
+        %Run{
+          counters: counters,
+          generator_totals: generator_totals,
+          last_script_error: last_script_error,
+          writers: writers
+        } = run ->
+          {counters, generator_totals} =
+            Enum.reduce(push_scalars, {counters, generator_totals}, fn {key, value},
+                                                                       {counters,
+                                                                        generator_totals} ->
+              case key do
+                {subkey, :count} ->
+                  {Map.update(counters, subkey, value, fn c -> c + value end), generator_totals}
+
+                {subkey, :total} ->
+                  total = %{subkey => value}
+
+                  {counters,
+                   Map.update(generator_totals, generator_id, total, fn total0 ->
+                     Map.merge(total0, total)
+                   end)}
+              end
             end)
 
-          hists =
-            push_hists
-            |> Enum.reduce(hists, fn {key, push_hist}, hists ->
-              {:ok, hist} = :hdr_histogram.from_binary(push_hist)
+          last_script_error =
+            if first_script_error !== last_script_error do
+              :ok =
+                Management.notify_all(%{
+                  "last_script_error" => script_error_to_json(first_script_error)
+                })
 
-              hists
-              |> Map.update(key, hist, fn hist0 ->
-                :hdr_histogram.add(hist0, hist)
-                :hdr_histogram.close(hist)
-                hist0
-              end)
+              first_script_error
+            else
+              last_script_error
+            end
+
+          push_hists =
+            push_binary_hists
+            |> Enum.map(fn {key, binary_hist} ->
+              {:ok, hist} = :hdr_histogram.from_binary(binary_hist)
+              {key, hist}
             end)
+            |> Map.new()
+
+          writers =
+            writers
+            |> Enum.map(fn {ref, %Writer{hists: hists} = writer} ->
+              {ref, %{writer | hists: Histogram.add(hists, push_hists)}}
+            end)
+            |> Map.new()
 
           %{
             run
-            | hists: hists,
-              counters: counters,
-              max_telemetry: max_telemetry(max_telemetry, max_telemetry0)
+            | counters: counters,
+              generator_totals: generator_totals,
+              last_script_error: last_script_error,
+              writers: writers
           }
 
         nil ->
           nil
       end
 
-    {:noreply,
-     %{
-       reporter
-       | generator_telemetries: generator_telemetries,
-         run: run,
-         last_errors: last_errors,
-         last_script_error:
-           if(first_script_error != nil, do: first_script_error, else: last_script_error)
-     }}
+    {:noreply, %{reporter | run: run}}
   end
 
   def handle_cast(
@@ -195,19 +146,24 @@ defmodule Stressgrid.Coordinator.Reporter do
       ) do
     writers =
       writer_configs
-      |> Enum.map(fn {module, params} ->
-        Kernel.apply(module, :init, params)
-      end)
+      |> Enum.map(fn {module, params, interval_ms} ->
+        ref = make_ref()
 
-    send(self(), :report)
+        send(self(), {:report, ref})
+
+        {ref,
+         %Writer{
+           module: module,
+           interval_ms: interval_ms,
+           state: Kernel.apply(module, :init, params)
+         }}
+      end)
+      |> Map.new()
 
     {:noreply,
      %{
        reporter
-       | run: %Run{id: id, plan_name: plan_name, writers: writers},
-         last_script_error: nil,
-         last_errors: %{},
-         aggregated_last_errors: %{}
+       | run: %Run{id: id, plan_name: plan_name, writers: writers}
      }}
   end
 
@@ -215,45 +171,47 @@ defmodule Stressgrid.Coordinator.Reporter do
         :stop_run,
         %Reporter{
           run: run,
-          last_script_error: last_script_error,
-          last_errors: last_errors,
-          reports: reports,
-          writer_configs: writer_configs
+          reports: reports
         } = reporter
       ) do
     case run do
       %Run{
         id: id,
         plan_name: plan_name,
-        max_telemetry: max_telemetry,
-        writers: writers,
-        report_timer_ref: report_timer_ref
+        maximums: maximums,
+        last_script_error: last_script_error,
+        writers: writers
       } ->
         result_json =
-          Enum.zip(writer_configs, writers)
-          |> Enum.reduce(%{}, fn {{module, _}, writer}, r ->
-            Kernel.apply(module, :finish, [r, id, writer])
+          writers
+          |> Enum.reduce(%{}, fn {_, %Writer{module: module, state: state, timer_ref: timer_ref}},
+                                 r ->
+            if timer_ref !== nil do
+              Process.cancel_timer(timer_ref)
+            end
+
+            Kernel.apply(module, :finish, [r, id, state])
           end)
 
-        report = %Report{
-          script_error: last_script_error,
-          errors: last_errors,
-          plan_name: plan_name,
-          max_telemetry: max_telemetry,
-          result_json: result_json
-        }
+        reports =
+          Map.put(reports, id, %Report{
+            plan_name: plan_name,
+            maximums: maximums,
+            script_error: last_script_error,
+            result_json: result_json
+          })
 
-        :ok = ManagementConnection.notify(%{"report_added" => report_to_json(id, report)})
-
-        if report_timer_ref !== nil do
-          Process.cancel_timer(report_timer_ref)
-        end
+        :ok =
+          Management.notify_all(%{
+            "last_script_error" => nil,
+            "reports" => report_to_json(reports)
+          })
 
         {:noreply,
          %{
            reporter
            | run: nil,
-             reports: reports |> Map.put(id, report)
+             reports: reports
          }}
 
       nil ->
@@ -264,17 +222,22 @@ defmodule Stressgrid.Coordinator.Reporter do
   def handle_cast(
         {:clear_stats, conn_id},
         %Reporter{
-          generator_telemetries: generator_telemetries
+          run: run
         } = reporter
       ) do
-    generator_telemetries =
-      generator_telemetries
-      |> Map.delete(conn_id)
+    run =
+      case run do
+        %Run{generator_totals: generator_totals} = run ->
+          %{run | generator_totals: Map.delete(generator_totals, conn_id)}
+
+        nil ->
+          nil
+      end
 
     {:noreply,
      %{
        reporter
-       | generator_telemetries: generator_telemetries
+       | run: run
      }}
   end
 
@@ -282,14 +245,16 @@ defmodule Stressgrid.Coordinator.Reporter do
         {:remove_report, id},
         %Reporter{reports: reports} = reporter
       ) do
-    case reports |> Map.get(id) do
+    case Map.get(reports, id) do
       %Report{} ->
-        :ok = ManagementConnection.notify(%{"report_removed" => %{"id" => id}})
+        reports = Map.delete(reports, id)
+
+        :ok = Management.notify_all(%{"reports" => report_to_json(reports)})
 
         {:noreply,
          %{
            reporter
-           | reports: reports |> Map.delete(id)
+           | reports: reports
          }}
 
       nil ->
@@ -298,249 +263,187 @@ defmodule Stressgrid.Coordinator.Reporter do
   end
 
   def handle_info(
-        :report,
-        %Reporter{
-          writer_configs: writer_configs,
-          generator_telemetries: generator_telemetries,
-          run: run
-        } = reporter
+        {:report, ref},
+        %Reporter{run: run} = reporter
       ) do
     case run do
       %Run{
         id: id,
-        clock: clock,
         counters: counters,
-        prev_counters: prev_counters,
-        hists: hists,
+        generator_totals: generator_totals,
+        maximums: maximums,
         writers: writers
       } = run ->
-        report_timer_ref = Process.send_after(self(), :report, @report_interval)
-
-        rates =
-          prev_counters
-          |> Enum.map(fn {key, prev_value} ->
-            value =
-              counters
-              |> Map.get(key)
-
-            {"#{key}_per_second" |> String.to_atom(),
-             (value - prev_value) / (@report_interval / 1_000)}
-          end)
-          |> Map.new()
-
-        scalars =
-          counters
-          |> Map.merge(rates)
-
-        writers =
-          Enum.zip(writer_configs, writers)
-          |> Enum.map(fn {{module, _}, writer} ->
-            writer = Kernel.apply(module, :write_hists, [id, clock, writer, hists])
-            writer = Kernel.apply(module, :write_scalars, [id, clock, writer, scalars])
-
-            Kernel.apply(module, :write_generator_telemetries, [
-              id,
-              clock,
-              writer,
-              generator_telemetries |> Map.to_list()
-            ])
-          end)
-
-        hists
-        |> Enum.each(fn {_, hist} ->
-          :ok = :hdr_histogram.reset(hist)
-        end)
-
-        run = %{
-          run
-          | clock: clock + 1,
-            prev_counters: counters,
+        case Map.get(writers, ref) do
+          %Writer{
+            module: module,
+            interval_ms: interval_ms,
+            state: state,
+            clock: clock,
             hists: hists,
-            writers: writers,
-            report_timer_ref: report_timer_ref
-        }
+            prev_counters: prev_counters
+          } = writer ->
+            timer_ref = Process.send_after(self(), {:report, ref}, interval_ms)
 
-        {:noreply, %{reporter | run: run}}
+            scalars =
+              format_counters(counters)
+              |> Map.merge(compute_rates(counters, prev_counters, interval_ms))
+              |> Map.merge(compute_totals(generator_totals))
+
+            state = Kernel.apply(module, :write, [id, clock, state, hists, scalars])
+
+            maximums =
+              maximums
+              |> compute_maximums(scalars)
+              |> compute_maximums(
+                Enum.map(hists, fn {key, hist} -> {key, :hdr_histogram.max(hist)} end)
+              )
+
+            Enum.each(hists, fn {_, hist} ->
+              :ok = :hdr_histogram.reset(hist)
+            end)
+
+            writers =
+              Map.put(writers, ref, %{
+                writer
+                | state: state,
+                  timer_ref: timer_ref,
+                  clock: clock + 1,
+                  prev_counters: counters
+              })
+
+            {:noreply, %{reporter | run: %{run | maximums: maximums, writers: writers}}}
+
+          nil ->
+            {:noreply, reporter}
+        end
 
       nil ->
         {:noreply, reporter}
     end
   end
 
-  def handle_info(
-        :aggregate,
-        %Reporter{
-          generator_telemetries: generator_telemetries,
-          last_errors: last_errors,
-          aggregated_telemetries: aggregated_telemetries,
-          aggregated_generator_counts: aggregated_generator_counts,
-          aggregated_last_errors: aggregated_last_errors
-        } = reporter
-      ) do
-    Process.send_after(self(), :aggregate, @aggregate_interval)
-
-    aggregated_telemetry =
-      generator_telemetries
-      |> Map.values()
-      |> aggregate_telemetries()
-
-    aggregated_telemetries =
-      [aggregated_telemetry | aggregated_telemetries]
-      |> Enum.take(@aggregated_max_size)
-
-    aggregated_generator_counts =
-      [map_size(generator_telemetries) | aggregated_generator_counts]
-      |> Enum.take(@aggregated_max_size)
-
-    aggregated_last_errors =
-      last_errors
-      |> Enum.reduce(aggregated_last_errors, fn {type, count}, aggregated_last_errors ->
-        aggregated_last_errors
-        |> Map.update(type, [count], &([count | &1] |> Enum.take(@aggregated_max_size)))
-      end)
-
-    {:noreply,
-     %{
-       reporter
-       | aggregated_telemetries: aggregated_telemetries,
-         aggregated_generator_counts: aggregated_generator_counts,
-         aggregated_last_errors: aggregated_last_errors
-     }}
-  end
-
-  defp max_telemetry(nil, _) do
-    nil
-  end
-
-  defp max_telemetry(generator_telemetry, nil) do
-    generator_telemetry
-  end
-
-  defp max_telemetry(
-         %GeneratorTelemetry{
-           cpu: cpu0,
-           network_rx: network_rx0,
-           network_tx: network_tx0,
-           active_device_count: active_device_count0
-         },
-         %GeneratorTelemetry{
-           cpu: cpu1,
-           network_rx: network_rx1,
-           network_tx: network_tx1,
-           active_device_count: active_device_count1
-         }
-       ) do
-    %GeneratorTelemetry{
-      cpu: max(cpu0, cpu1),
-      network_rx: max(network_rx0, network_rx1),
-      network_tx: max(network_tx0, network_tx1),
-      active_device_count: max(active_device_count0, active_device_count1)
-    }
-  end
-
-  defp aggregate_telemetries(telemetries) do
-    telemetries_length = length(telemetries)
-
-    %GeneratorTelemetry{
-      cpu:
-        if(telemetries_length === 0,
-          do: 0.0,
-          else: telemetries |> Enum.map(fn %GeneratorTelemetry{cpu: cpu} -> cpu end) |> Enum.max()
-        ),
-      network_rx:
-        telemetries
-        |> Enum.map(fn %GeneratorTelemetry{network_rx: network_rx} -> network_rx end)
-        |> Enum.sum(),
-      network_tx:
-        telemetries
-        |> Enum.map(fn %GeneratorTelemetry{network_tx: network_tx} -> network_tx end)
-        |> Enum.sum(),
-      active_device_count:
-        telemetries
-        |> Enum.map(fn %GeneratorTelemetry{active_device_count: active_device_count} ->
-          active_device_count
-        end)
-        |> Enum.sum()
-    }
+  defp report_to_json(reports) do
+    Enum.map(reports, fn {id, report} ->
+      report_to_json(id, report)
+    end)
   end
 
   defp report_to_json(id, %Report{
-         script_error: script_error,
-         errors: errors,
          plan_name: plan_name,
-         result_json: result_json,
-         max_telemetry: max_telemetry
+         maximums: maximums,
+         script_error: script_error,
+         result_json: result_json
        }) do
-    %{
+    json = %{
       "id" => id,
       "name" => plan_name,
+      "maximums" => maximums,
       "result" => result_json
     }
-    |> add_script_error("script_error", script_error)
-    |> add_errors("errors", errors)
-    |> Map.merge(max_telemetry |> GeneratorTelemetry.to_json("max_"))
+
+    if script_error do
+      Map.merge(json, %{"script_error" => script_error_to_json(script_error)})
+    else
+      json
+    end
   end
 
-  defp add_script_error(json, _, nil) do
-    json
+  defp format_counters(counters) do
+    counters
+    |> Enum.map(fn {key, value} ->
+      {:"#{key}_count", value}
+    end)
+    |> Map.new()
   end
 
-  defp add_script_error(json, name, %{
+  defp compute_rates(counters, prev_counters, interval_ms) do
+    prev_counters
+    |> Enum.map(fn {key, prev_value} ->
+      value = Map.get(counters, key)
+
+      {:"#{key}_per_second", (value - prev_value) / (interval_ms / 1_000)}
+    end)
+    |> Map.new()
+  end
+
+  defp compute_totals(generator_totals) do
+    Enum.reduce(generator_totals, %{}, fn {_, totals}, total_sums ->
+      Enum.reduce(totals, total_sums, fn {key, value}, total_sums ->
+        Map.update(total_sums, key, value, fn value0 -> value0 + value end)
+      end)
+    end)
+  end
+
+  defp compute_maximums(maximums, scalars) do
+    Enum.reduce(scalars, maximums, fn {key, value}, maximums ->
+      case Map.get(maximums, key) do
+        nil ->
+          Map.put(maximums, key, value)
+
+        max_value ->
+          if value > max_value do
+            Map.put(maximums, key, value)
+          else
+            maximums
+          end
+      end
+    end)
+  end
+
+  defp script_error_to_json(%{
+         script: script,
+         error: %ArgumentError{message: message}
+       }) do
+    %{
+      "script" => script,
+      "description" => message
+    }
+  end
+
+  defp script_error_to_json(%{
          script: script,
          error: %SyntaxError{description: description, line: line}
        }) do
-    json
-    |> Map.put(name, %{
+    %{
       "script" => script,
       "description" => description,
       "line" => line
-    })
+    }
   end
 
-  defp add_script_error(json, name, %{
+  defp script_error_to_json(%{
          script: script,
          error: %CompileError{description: description, line: line}
        }) do
-    json
-    |> Map.put(name, %{
+    %{
       "script" => script,
       "description" => description,
       "line" => line
-    })
+    }
   end
 
-  defp add_script_error(json, name, %{
+  defp script_error_to_json(%{
          script: script,
          error: %TokenMissingError{
            description: description,
            line: line
          }
        }) do
-    json
-    |> Map.put(name, %{
+    %{
       "script" => script,
       "description" => description,
       "line" => line
-    })
+    }
   end
 
-  defp add_script_error(json, name, %{
+  defp script_error_to_json(%{
          script: script,
          error: :function_clause
        }) do
-    json
-    |> Map.put(name, %{
+    %{
       "script" => script,
       "description" => "function_clause"
-    })
-  end
-
-  defp add_errors(json, _, errors) when map_size(errors) === 0 do
-    json
-  end
-
-  defp add_errors(json, name, errors) do
-    json
-    |> Map.put(name, errors)
+    }
   end
 end

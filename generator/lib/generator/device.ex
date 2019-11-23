@@ -1,7 +1,7 @@
 defmodule Stressgrid.Generator.Device do
   @moduledoc false
 
-  alias Stressgrid.Generator.{Device, DeviceContext}
+  alias Stressgrid.Generator.{Device, DeviceContext, Histogram}
 
   require Logger
 
@@ -10,7 +10,7 @@ defmodule Stressgrid.Generator.Device do
             task: nil,
             script_error: nil,
             hists: %{},
-            counters: %{},
+            scalars: %{},
             last_tss: %{}
 
   defmacro __using__(opts) do
@@ -161,12 +161,12 @@ defmodule Stressgrid.Generator.Device do
   def do_collect(
         %{
           device:
-            %Device{script_error: script_error, hists: from_hists, counters: counters, task: task} =
+            %Device{script_error: script_error, hists: from_hists, scalars: scalars, task: task} =
               device
         } = state,
         to_hists
       ) do
-    hists = add_hists(to_hists, from_hists)
+    hists = Histogram.add(to_hists, from_hists)
 
     :ok =
       from_hists
@@ -174,13 +174,13 @@ defmodule Stressgrid.Generator.Device do
         :ok = :hdr_histogram.reset(hist)
       end)
 
-    reset_counters =
-      counters
+    reset_scalars =
+      scalars
       |> Enum.map(fn {key, _} -> {key, 0} end)
       |> Map.new()
 
-    {{:ok, script_error, task != nil, hists, counters},
-     %{state | device: %{device | counters: reset_counters}}}
+    {{:ok, script_error, task != nil, hists, scalars},
+     %{state | device: %{device | scalars: reset_scalars}}}
   end
 
   def do_init(
@@ -324,14 +324,14 @@ defmodule Stressgrid.Generator.Device do
     state |> do_recycle(true)
   end
 
-  def do_inc_counter(%{device: %Device{counters: counters} = device} = state, key, value) do
+  def do_inc_counter(%{device: %Device{scalars: scalars} = device} = state, key, value) do
     %{
       state
       | device: %{
           device
-          | counters:
-              counters
-              |> Map.update(key, value, fn c -> c + value end)
+          | scalars:
+              scalars
+              |> Map.update({key, :count}, value, fn c -> c + value end)
         }
     }
   end
@@ -372,62 +372,18 @@ defmodule Stressgrid.Generator.Device do
   end
 
   defp record_hist(%{device: %Device{hists: hists} = device} = state, key, value) do
-    {device, hist} =
-      case hists |> Map.get(key) do
-        nil ->
-          hist = make_hist()
-          {%{device | hists: hists |> Map.put(key, hist)}, hist}
-
-        hist ->
-          {device, hist}
-      end
-
-    :hdr_histogram.record(hist, value)
-    %{state | device: device}
-  end
-
-  defp add_hists(to_hists, from_hists) do
-    from_hists
-    |> Enum.reduce(to_hists, fn {key, from_hist}, hists ->
-      {hists, to_hist} =
-        case hists
-             |> Map.get(key) do
-          nil ->
-            hist = make_hist()
-            {hists |> Map.put(key, hist), hist}
-
-          hist ->
-            {hists, hist}
-        end
-
-      :ok =
-        case :hdr_histogram.add(to_hist, from_hist) do
-          dropped_count when is_integer(dropped_count) ->
-            :ok
-
-          {:error, error} ->
-            Logger.error("Error adding hists #{inspect(error)}")
-            :ok
-        end
-
-      hists
-    end)
-  end
-
-  defp make_hist do
-    {:ok, hist} = :hdr_histogram.open(60_000_000, 3)
-    hist
+    %{state | device: %{device | hists: Histogram.record(hists, key, value)}}
   end
 
   defp task_reason_to_key({:timeout, {GenServer, :call, _}}) do
     Logger.debug("Script timeout")
 
-    :timeout_task_error_count
+    :timeout_task_error
   end
 
   defp task_reason_to_key(reason) do
     Logger.error("Script error #{inspect(reason)}")
 
-    :unknown_task_error_count
+    :unknown_task_error
   end
 end

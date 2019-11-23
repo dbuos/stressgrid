@@ -4,7 +4,7 @@ defmodule Stressgrid.Generator.Connection do
   use GenServer
   require Logger
 
-  alias Stressgrid.Generator.{Connection, Cohort, Device}
+  alias Stressgrid.Generator.{Connection, Cohort, Device, Histogram}
 
   @conn_timeout 5_000
   @report_interval 1_000
@@ -145,44 +145,44 @@ defmodule Stressgrid.Generator.Connection do
   def handle_info(:report, %Connection{} = connection) do
     Process.send_after(self(), :report, @report_interval)
 
-    {first_script_error, active_device_count, aggregate_hists, aggregate_counters} =
+    {first_script_error, active_device_number, aggregate_hists, aggregate_scalars} =
       Supervisor.which_children(Cohort.Supervisor)
       |> Enum.reduce({nil, 0, %{}, %{}}, fn {_, cohort_pid, _, _}, a ->
         Supervisor.which_children(cohort_pid)
         |> Enum.reduce(a, fn {_, device_pid, _, _},
-                             {first_script_error, active_device_count, aggregate_hists,
-                              aggregate_counters} ->
-          {:ok, script_error, is_active, aggregate_hists, device_counters} =
+                             {first_script_error, active_device_number, aggregate_hists,
+                              aggregate_scalars} ->
+          {:ok, script_error, is_active, aggregate_hists, device_scalars} =
             Device.collect(device_pid, aggregate_hists)
 
-          aggregate_counters =
-            device_counters
-            |> Enum.reduce(aggregate_counters, fn {key, value}, counters ->
-              counters
-              |> Map.update(key, value, fn c -> c + value end)
+          aggregate_scalars =
+            Enum.reduce(device_scalars, aggregate_scalars, fn {key, value}, scalars ->
+              Map.update(scalars, key, value, fn c -> c + value end)
             end)
 
           {if(first_script_error !== nil, do: first_script_error, else: script_error),
-           active_device_count + if(is_active, do: 1, else: 0), aggregate_hists,
-           aggregate_counters}
+           active_device_number + if(is_active, do: 1, else: 0), aggregate_hists,
+           aggregate_scalars}
         end)
       end)
 
-    {:ok, cpu, connection} =
-      connection
-      |> cpu_utilization()
+    {:ok, cpu_percent, connection} = cpu_utilization_percent(connection)
 
-    {:ok, network_rx, network_tx, connection} =
-      connection
-      |> network_utilization()
+    {:ok, network_rx_bytes_per_second, network_tx_bytes_per_second, connection} =
+      network_utilization(connection)
+
+    aggregate_hists = Histogram.record(aggregate_hists, :cpu_percent, cpu_percent)
+
+    aggregate_scalars =
+      Map.merge(aggregate_scalars, %{
+        {:active_device_number, :total} => active_device_number,
+        {:network_rx_bytes_per_second, :total} => network_rx_bytes_per_second,
+        {:network_tx_bytes_per_second, :total} => network_tx_bytes_per_second
+      })
 
     telemetry = %{
-      cpu: cpu,
-      network_rx: network_rx,
-      network_tx: network_tx,
       first_script_error: first_script_error,
-      active_device_count: active_device_count,
-      counters: aggregate_counters,
+      scalars: aggregate_scalars,
       hists:
         aggregate_hists
         |> Enum.map(fn {key, hist} ->
@@ -362,7 +362,7 @@ defmodule Stressgrid.Generator.Connection do
     end
   end
 
-  defp cpu_utilization(%Connection{wall_times: prev_wall_times} = connection) do
+  defp cpu_utilization_percent(%Connection{wall_times: prev_wall_times} = connection) do
     next_wall_times =
       :erlang.statistics(:scheduler_wall_time)
       |> Enum.sort()
@@ -381,7 +381,9 @@ defmodule Stressgrid.Generator.Connection do
         0
       end
 
-    {:ok, utilization, %{connection | wall_times: next_wall_times}}
+    utilization_percent = round(utilization * 100)
+
+    {:ok, utilization_percent, %{connection | wall_times: next_wall_times}}
   end
 
   defp network_utilization(

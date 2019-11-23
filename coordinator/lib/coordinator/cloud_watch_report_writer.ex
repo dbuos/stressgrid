@@ -1,7 +1,7 @@
 defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
   @moduledoc false
 
-  alias Stressgrid.Coordinator.{ReportWriter, CloudWatchReportWriter, GeneratorTelemetry}
+  alias Stressgrid.Coordinator.{ReportWriter, CloudWatchReportWriter}
 
   @meta_data_placement_availability_zone "http://169.254.169.254/latest/meta-data/placement/availability-zone"
   @behaviour ReportWriter
@@ -14,9 +14,9 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
     %CloudWatchReportWriter{region: detect_ec2_region()}
   end
 
-  def write_hists(_, _, %CloudWatchReportWriter{region: nil} = writer, _), do: writer
+  def write(_, _, %CloudWatchReportWriter{region: nil} = writer, _, _), do: writer
 
-  def write_hists(id, _, %CloudWatchReportWriter{region: region} = writer, hists) do
+  def write(id, _, %CloudWatchReportWriter{region: region} = writer, hists, scalars) do
     :ok =
       put_metric_data(
         region,
@@ -34,12 +34,6 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
         end)
       )
 
-    writer
-  end
-
-  def write_scalars(_, _, %CloudWatchReportWriter{region: nil} = writer, _), do: writer
-
-  def write_scalars(id, _, %CloudWatchReportWriter{region: region} = writer, scalars) do
     :ok =
       put_metric_data(
         region,
@@ -47,33 +41,6 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
         |> Enum.map(fn {key, value} ->
           {:scalar, key, key_unit(key), value, [run: id]}
         end)
-      )
-
-    writer
-  end
-
-  def write_generator_telemetries(_, _, %CloudWatchReportWriter{region: nil} = writer, _),
-    do: writer
-
-  def write_generator_telemetries(
-        id,
-        _,
-        %CloudWatchReportWriter{region: region} = writer,
-        generator_telemetries
-      ) do
-    total_active_device_count =
-      generator_telemetries
-      |> Enum.map(fn {_, %GeneratorTelemetry{active_device_count: active_device_count}} ->
-        active_device_count
-      end)
-      |> Enum.sum()
-
-    :ok =
-      put_metric_data(
-        region,
-        [
-          {:scalar, :total_active_device_count, :count, total_active_device_count, [run: id]}
-        ]
       )
 
     writer

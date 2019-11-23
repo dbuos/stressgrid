@@ -11,20 +11,32 @@ defmodule Stressgrid.Coordinator.Application do
     Scheduler,
     CsvReportWriter,
     CloudWatchReportWriter,
-    ManagementConnection
+    Management,
+    ManagementConnection,
+    ManagementReportWriter
   }
 
+  @management_report_writer_interval_ms 1_000
+  @default_report_interval_seconds 60
+  @default_generators_port 9696
+  @default_management_port 8000
+
   def start(_type, _args) do
-    generators_port = System.get_env() |> Map.get("PORT", "9696") |> String.to_integer()
-    management_port = System.get_env() |> Map.get("PORT", "8000") |> String.to_integer()
+    generators_port = get_env_integer("GENERATORS_PORT", @default_generators_port)
+    management_port = get_env_integer("MANAGEMENT_PORT", @default_management_port)
+
+    report_interval_ms =
+      get_env_integer("REPORT_INTERVAL_SECONDS", @default_report_interval_seconds) * 1000
 
     writer_configs = [
-      {CsvReportWriter, []},
-      {CloudWatchReportWriter, []}
+      {CsvReportWriter, [], report_interval_ms},
+      {CloudWatchReportWriter, [], report_interval_ms},
+      {ManagementReportWriter, [], @management_report_writer_interval_ms}
     ]
 
     children = [
-      {Registry, keys: :duplicate, name: ManagementConnection},
+      Management.registry_spec(),
+      Management,
       GeneratorRegistry,
       {Reporter, writer_configs: writer_configs},
       Scheduler,
@@ -65,5 +77,15 @@ defmodule Stressgrid.Coordinator.Application do
           {:priv_dir, :coordinator, "management", [{:mimetypes, :cow_mimetypes, :all}]}}
        ]}
     ])
+  end
+
+  defp get_env_integer(name, default) do
+    case Map.get(System.get_env(), name) do
+      nil ->
+        default
+
+      value ->
+        String.to_integer(value)
+    end
   end
 end

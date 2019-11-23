@@ -6,14 +6,11 @@ export interface IScriptError {
   line: number;
 }
 
-export interface ITelemetry {
-  cpu: number[];
-  network_rx: number[];
-  network_tx: number[];
-  active_count: number[];
-  last_errors?: Map<string, number[]>;
-  last_script_error?: IScriptError;
-  generator_count: number[];
+export interface IStats<T> {
+  cpu_percent: T;
+  network_rx_bytes_per_second: T;
+  network_tx_bytes_per_second: T;
+  active_device_number: T;
 }
 
 export interface IRun {
@@ -31,29 +28,17 @@ export interface IResult {
 export interface IReport {
   id: string;
   name: string;
-  errors?: Map<string, number[]>;
-  script_error?: IScriptError;
-  max_cpu: number;
-  max_network_rx: number;
-  max_network_tx: number;
-  max_generator_count: number;
+  maximums: IStats<number>;
   result: IResult;
+  script_error?: IScriptError;
 }
 
-export interface IInit {
-  reports: IReport[];
-  grid: IGrid;
-}
-
-export interface IGrid {
-  telemetry: ITelemetry;
-  run: IRun | null;
-}
-
-export interface INotify {
-  grid_changed?: IGrid;
-  report_added?: IReport;
-  report_removed?: { id: string };
+export interface IState {
+  generator_count?: number;
+  stats?: IStats<number[]> | null;
+  run?: IRun | null;
+  reports?: IReport[];
+  last_script_error?: IScriptError | null;
 }
 
 export interface IBlock {
@@ -88,17 +73,16 @@ export interface IRemoveReport {
 }
 
 export interface IMessage {
-  init?: IInit;
-  notify?: INotify;
+  init?: IState;
+  notify?: IState;
   run_plan?: IRunPlan;
   remove_report?: IRemoveReport;
 }
 
 export interface IStressgridEvents {
-  init(grid: IGrid, reports: IReport[]): void;
-  updateGrid(grid: IGrid): void;
-  addReport(report: IReport): void;
-  deleteReport(id: string): void;
+  notify(state: IState): void;
+  init(state: IState): void;
+  connected(): void;
   disconnected(): void;
 }
 
@@ -114,6 +98,9 @@ export class Stressgrid {
     this.ws = new ReconnectingWebSocket(wsUrl, [], {
       WebSocket
     });
+    this.ws.onopen = () => {
+      this.events.connected();
+    }
     this.ws.onmessage = (e) => {
       _.each(JSON.parse(e.data), (message: IMessage) => {
         this.handle(message);
@@ -152,20 +139,12 @@ export class Stressgrid {
   }
 
   private handle(message: IMessage) {
-    const { init, notify } = message;
+    const { notify, init } = message;
     if (init) {
-      this.events.init(init.grid, init.reports);
+      this.events.init(init);
     }
     if (notify) {
-      if (notify.grid_changed) {
-        this.events.updateGrid(notify.grid_changed);
-      }
-      if (notify.report_added) {
-        this.events.addReport(notify.report_added);
-      }
-      if (notify.report_removed) {
-        this.events.deleteReport(notify.report_removed.id);
-      }
+      this.events.notify(notify);
     }
   }
 }

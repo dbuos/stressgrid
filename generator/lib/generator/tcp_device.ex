@@ -187,28 +187,40 @@ defmodule Stressgrid.Generator.TcpDevice do
   end
 
   defp tcp_reason_to_key(:nxdomain) do
-    :nx_domain_error_count
+    :nx_domain_error
   end
 
   defp tcp_reason_to_key(:eaddrnotavail) do
-    :addr_not_avail_error_count
+    :addr_not_avail_error
   end
 
   defp tcp_reason_to_key(:ehostdown) do
-    :host_down_error_count
+    :host_down_error
   end
 
   defp tcp_reason_to_key(:ehostunreach) do
-    :host_unreach_error_count
+    :host_unreach_error
   end
 
   defp tcp_reason_to_key(:emfile) do
-    :too_many_open_files_error_count
+    :too_many_open_files_error
+  end
+
+  defp tcp_reason_to_key(:econnrefused) do
+    :conn_refused_error
+  end
+
+  defp tcp_reason_to_key(:econnreset) do
+    :conn_reset_error
+  end
+
+  defp tcp_reason_to_key(:etimedout) do
+    :conn_timedout_error
   end
 
   defp tcp_reason_to_key(reason) do
     Logger.error("TCP error #{inspect(reason)}")
 
-    :unknown_error_count
+    :unknown_error
   end
 end

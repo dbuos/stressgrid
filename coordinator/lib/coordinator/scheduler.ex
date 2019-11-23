@@ -8,10 +8,12 @@ defmodule Stressgrid.Coordinator.Scheduler do
     Scheduler,
     Utils,
     GeneratorRegistry,
-    Reporter
+    Reporter,
+    Management
   }
 
   @cooldown_ms 60_000
+  @notify_interval_ms 1_000
 
   defmodule Run do
     defstruct id: nil,
@@ -19,7 +21,8 @@ defmodule Stressgrid.Coordinator.Scheduler do
               state: nil,
               until_ms: 0,
               timer_refs: [],
-              cohort_ids: []
+              cohort_ids: [],
+              notify_timer_ref: nil
   end
 
   defstruct run: nil
@@ -36,22 +39,20 @@ defmodule Stressgrid.Coordinator.Scheduler do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
-  def get_run_json() do
-    GenServer.call(__MODULE__, :get_run_json)
-  end
-
   def init(_args) do
     {:ok, %Scheduler{}}
   end
 
-  def handle_call(:get_run_json, _, %Scheduler{run: nil} = scheduler) do
-    {:reply, :no_run, scheduler}
-  end
+  def handle_info(:notify, %Scheduler{run: run} = scheduler) do
+    if run != nil do
+      :ok = Management.notify_all(%{"run" => run_to_json(run)})
 
-  def handle_call(:get_run_json, _, %Scheduler{run: run} = scheduler) do
-    run_json = run_to_json(run)
+      notify_timer_ref = Process.send_after(self(), :notify, @notify_interval_ms)
 
-    {:reply, {:ok, run_json}, scheduler}
+      {:noreply, %{scheduler | run: %{run | notify_timer_ref: notify_timer_ref}}}
+    else
+      {:noreply, scheduler}
+    end
   end
 
   def handle_info({:run_op, op}, %Scheduler{run: run} = scheduler) do
@@ -141,7 +142,15 @@ defmodule Stressgrid.Coordinator.Scheduler do
 
     timer_refs = [schedule_op(ts, :stop) | timer_refs]
 
-    %Run{id: id, plan_name: plan_name, timer_refs: timer_refs, state: :init}
+    notify_timer_ref = Process.send_after(self(), :notify, @notify_interval_ms)
+
+    %Run{
+      id: id,
+      plan_name: plan_name,
+      timer_refs: timer_refs,
+      state: :init,
+      notify_timer_ref: notify_timer_ref
+    }
   end
 
   defp schedule_op(ts, op) do
@@ -166,7 +175,12 @@ defmodule Stressgrid.Coordinator.Scheduler do
     :ok
   end
 
-  defp do_abort_run(%Run{id: id, timer_refs: timer_refs, cohort_ids: cohort_ids}) do
+  defp do_abort_run(%Run{
+         id: id,
+         timer_refs: timer_refs,
+         cohort_ids: cohort_ids,
+         notify_timer_ref: notify_timer_ref
+       }) do
     Logger.info("Aborted run #{id}")
 
     :ok =
@@ -177,6 +191,11 @@ defmodule Stressgrid.Coordinator.Scheduler do
       cohort_ids
       |> Enum.each(&GeneratorRegistry.stop_cohort(&1))
 
+    if notify_timer_ref do
+      Process.cancel_timer(notify_timer_ref)
+    end
+
+    :ok = Management.notify_all(%{"run" => nil})
     :ok = Reporter.stop_run()
 
     :ok
@@ -184,13 +203,18 @@ defmodule Stressgrid.Coordinator.Scheduler do
 
   defp do_run_op(%Run{id: id, plan_name: plan_name} = run, :start) do
     Logger.info("Started run #{id}")
+
     :ok = Reporter.start_run(id, plan_name)
+
     run
   end
 
   defp do_run_op(%Run{id: id}, :stop) do
     Logger.info("Stopped run #{id}")
+
+    :ok = Management.notify_all(%{"run" => nil})
     :ok = Reporter.stop_run()
+
     nil
   end
 

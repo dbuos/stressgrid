@@ -8,7 +8,8 @@ defmodule Stressgrid.Coordinator.GeneratorRegistry do
     GeneratorRegistry,
     Utils,
     Reporter,
-    GeneratorConnection
+    GeneratorConnection,
+    Management
   }
 
   defstruct registrations: %{},
@@ -41,10 +42,14 @@ defmodule Stressgrid.Coordinator.GeneratorRegistry do
     ref = :erlang.monitor(:process, pid)
     Logger.info("Registered generator #{id}")
 
+    registrations = Map.put(registrations, id, pid)
+
+    :ok = Management.notify_all(%{"generator_count" => map_size(registrations)})
+
     {:noreply,
      %{
        registry
-       | registrations: registrations |> Map.put(id, pid),
+       | registrations: registrations,
          monitors: monitors |> Map.put(ref, id)
      }}
   end
@@ -89,12 +94,16 @@ defmodule Stressgrid.Coordinator.GeneratorRegistry do
 
       id ->
         Logger.info("Unregistered generator #{id}: #{inspect(reason)}")
+
+        registrations = Map.delete(registrations, id)
+
+        :ok = Management.notify_all(%{"generator_count" => map_size(registrations)})
         :ok = Reporter.clear_stats(id)
 
         {:noreply,
          %{
            registry
-           | registrations: registrations |> Map.delete(id),
+           | registrations: registrations,
              monitors: monitors |> Map.delete(ref)
          }}
     end

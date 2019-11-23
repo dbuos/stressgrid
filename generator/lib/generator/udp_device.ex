@@ -64,7 +64,7 @@ defmodule Stressgrid.Generator.UdpDevice do
       case :gen_udp.send(socket, ip, port, datagram) do
         :ok ->
           device
-          |> Device.do_inc_counter("datagram_count" |> String.to_atom(), 1)
+          |> Device.do_inc_counter(:datagram, 1)
 
         {:error, reason} ->
           device
@@ -149,28 +149,28 @@ defmodule Stressgrid.Generator.UdpDevice do
   end
 
   defp udp_reason_to_key(:nxdomain) do
-    :nx_domain_error_count
+    :nx_domain_error
   end
 
   defp udp_reason_to_key(:eaddrnotavail) do
-    :addr_not_avail_error_count
+    :addr_not_avail_error
   end
 
   defp udp_reason_to_key(:ehostdown) do
-    :host_down_error_count
+    :host_down_error
   end
 
   defp udp_reason_to_key(:ehostunreach) do
-    :host_unreach_error_count
+    :host_unreach_error
   end
 
   defp udp_reason_to_key(:emfile) do
-    :too_many_open_files_error_count
+    :too_many_open_files_error
   end
 
   defp udp_reason_to_key(reason) do
     Logger.error("UDP error #{inspect(reason)}")
 
-    :unknown_error_count
+    :unknown_error
   end
 end
