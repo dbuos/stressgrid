@@ -4,39 +4,23 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
   alias Stressgrid.Coordinator.{
     ManagementConnection,
     Scheduler,
-    Reporter
+    Reporter,
+    Management
   }
 
   @behaviour :cowboy_websocket
 
   require Logger
 
-  @tick_interval 1_000
-
-  defstruct tick_timer_ref: nil
+  defstruct []
 
   def init(req, _) do
     {:cowboy_websocket, req, %ManagementConnection{}, %{idle_timeout: :infinity}}
   end
 
-  def websocket_init(%{} = connection) do
-    tick_timer_ref = Process.send_after(self(), :tick, @tick_interval)
-
-    {:ok, reports_json} = Reporter.get_reports_json()
-    {:ok, grid_json} = get_grid_json()
-
-    :ok =
-      send_json(self(), [
-        %{
-          "init" => %{
-            "reports" => reports_json,
-            "grid" => grid_json
-          }
-        }
-      ])
-
-    Registry.register(ManagementConnection, nil, nil)
-    {:ok, %{connection | tick_timer_ref: tick_timer_ref}}
+  def websocket_init(%ManagementConnection{} = connection) do
+    Management.connect()
+    {:ok, connection}
   end
 
   def websocket_handle({:text, text}, connection) do
@@ -51,25 +35,12 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
     {:reply, {:pong, data}, connection}
   end
 
-  def websocket_info({:send, json}, connection) do
-    text = Jason.encode!(json)
+  def websocket_info(
+        {:send, envelope, json},
+        %ManagementConnection{} = connection
+      ) do
+    text = Jason.encode!([%{envelope => json}])
     {:reply, {:text, text}, connection}
-  end
-
-  def websocket_info(:tick, connection) do
-    {:ok, connection |> notify_grid_changed()}
-  end
-
-  def notify(json) do
-    Registry.lookup(ManagementConnection, nil)
-    |> Enum.each(fn {pid, nil} ->
-      send_json(pid, [%{"notify" => json}])
-    end)
-  end
-
-  defp send_json(pid, json) do
-    _ = Kernel.send(pid, {:send, json})
-    :ok
   end
 
   defp receive_json(
@@ -128,7 +99,7 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
 
     :ok = Scheduler.start_run(plan_name, blocks, addresses, opts)
 
-    connection |> notify_grid_changed()
+    connection
   end
 
   defp receive_json(
@@ -137,7 +108,7 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
        ) do
     :ok = Scheduler.abort_run()
 
-    connection |> notify_grid_changed()
+    connection
   end
 
   defp receive_json(
@@ -227,38 +198,5 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
       _, acc ->
         acc
     end)
-  end
-
-  defp notify_grid_changed(%ManagementConnection{tick_timer_ref: tick_timer_ref} = connection) do
-    Process.cancel_timer(tick_timer_ref)
-    tick_timer_ref = Process.send_after(self(), :tick, @tick_interval)
-
-    {:ok, grid_json} = get_grid_json()
-
-    :ok =
-      notify(%{
-        "grid_changed" => grid_json
-      })
-
-    %{connection | tick_timer_ref: tick_timer_ref}
-  end
-
-  defp get_grid_json do
-    {:ok, telemetry_json} = Reporter.get_telemetry_json()
-
-    run_json =
-      case Scheduler.get_run_json() do
-        {:ok, run_json} ->
-          run_json
-
-        :no_run ->
-          nil
-      end
-
-    {:ok,
-     %{
-       "telemetry" => telemetry_json,
-       "run" => run_json
-     }}
   end
 end

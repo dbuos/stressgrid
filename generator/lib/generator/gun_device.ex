@@ -263,7 +263,7 @@ defmodule Stressgrid.Generator.GunDevice do
 
     {:noreply,
      device
-     |> Device.do_inc_counter("conn_count" |> String.to_atom(), 1)
+     |> Device.do_inc_counter(:conn, 1)
      |> Device.do_stop_timing(:conn)}
   end
 
@@ -321,7 +321,7 @@ defmodule Stressgrid.Generator.GunDevice do
 
     device =
       device
-      |> Device.do_inc_counter("response_count" |> String.to_atom(), 1)
+      |> Device.do_inc_counter(:response, 1)
 
     {:noreply, device}
   end
@@ -605,73 +605,73 @@ defmodule Stressgrid.Generator.GunDevice do
   end
 
   defp gun_reason_to_key(:normal) do
-    :closed_error_count
+    :closed_error
   end
 
   defp gun_reason_to_key(:closed) do
-    :conn_lost_error_count
+    :conn_lost_error
   end
 
   defp gun_reason_to_key({:shutdown, :econnrefused}) do
-    :conn_refused_error_count
+    :conn_refused_error
   end
 
   defp gun_reason_to_key({:shutdown, :econnreset}) do
-    :conn_reset_error_count
+    :conn_reset_error
   end
 
   defp gun_reason_to_key({:shutdown, :nxdomain}) do
-    :nx_domain_error_count
+    :nx_domain_error
   end
 
   defp gun_reason_to_key({:shutdown, :etimedout}) do
-    :conn_timedout_error_count
+    :conn_timedout_error
   end
 
   defp gun_reason_to_key({:shutdown, :eaddrnotavail}) do
-    :addr_not_avail_error_count
+    :addr_not_avail_error
   end
 
   defp gun_reason_to_key({:shutdown, :ehostdown}) do
-    :host_down_error_count
+    :host_down_error
   end
 
   defp gun_reason_to_key({:shutdown, :ehostunreach}) do
-    :host_unreach_error_count
+    :host_unreach_error
   end
 
   defp gun_reason_to_key({:shutdown, :emfile}) do
-    :too_many_open_files_error_count
+    :too_many_open_files_error
   end
 
   defp gun_reason_to_key({:shutdown, :closed}) do
-    :conn_lost_error_count
+    :conn_lost_error
   end
 
   defp gun_reason_to_key({:shutdown, {:tls_alert, _}}) do
-    :tls_alert_error_count
+    :tls_alert_error
   end
 
   defp gun_reason_to_key({:stream_error, _, _}) do
-    :http2_stream_error_count
+    :http2_stream_error
   end
 
   defp gun_reason_to_key({:closed, _}) do
-    :conn_lost_error_count
+    :conn_lost_error
   end
 
   defp gun_reason_to_key({:badstate, _}) do
-    :bad_conn_state_error_count
+    :bad_conn_state_error
   end
 
   defp gun_reason_to_key(:noproc) do
-    :conn_terminated_error_count
+    :conn_terminated_error
   end
 
   defp gun_reason_to_key(reason) do
     Logger.error("Gun error #{inspect(reason)}")
 
-    :unknown_error_count
+    :unknown_error
   end
 
   defp prepare_request(headers, body) when is_binary(body) do
