@@ -5,7 +5,7 @@ defmodule Stressgrid.Coordinator.Reporter do
 
   defstruct writer_configs: [],
             run: nil,
-            reports: %{}
+            reports: []
 
   defmodule Run do
     defstruct id: nil,
@@ -18,7 +18,8 @@ defmodule Stressgrid.Coordinator.Reporter do
   end
 
   defmodule Report do
-    defstruct plan_name: nil,
+    defstruct id: nil,
+              plan_name: nil,
               maximums: nil,
               script_error: nil,
               result_json: %{}
@@ -193,18 +194,21 @@ defmodule Stressgrid.Coordinator.Reporter do
             Kernel.apply(module, :finish, [r, id, state])
           end)
 
-        reports =
-          Map.put(reports, id, %Report{
+        reports = [
+          %Report{
+            id: id,
             plan_name: plan_name,
             maximums: maximums,
             script_error: last_script_error,
             result_json: result_json
-          })
+          }
+          | reports
+        ]
 
         :ok =
           Management.notify_all(%{
             "last_script_error" => nil,
-            "reports" => report_to_json(reports)
+            "reports" => reports_to_json(reports)
           })
 
         {:noreply,
@@ -245,21 +249,15 @@ defmodule Stressgrid.Coordinator.Reporter do
         {:remove_report, id},
         %Reporter{reports: reports} = reporter
       ) do
-    case Map.get(reports, id) do
-      %Report{} ->
-        reports = Map.delete(reports, id)
+    reports = Enum.reject(reports, fn %Report{id: id0} -> id0 == id end)
 
-        :ok = Management.notify_all(%{"reports" => report_to_json(reports)})
+    :ok = Management.notify_all(%{"reports" => reports_to_json(reports)})
 
-        {:noreply,
-         %{
-           reporter
-           | reports: reports
-         }}
-
-      nil ->
-        {:noreply, reporter}
-    end
+    {:noreply,
+     %{
+       reporter
+       | reports: reports
+     }}
   end
 
   def handle_info(
@@ -323,30 +321,27 @@ defmodule Stressgrid.Coordinator.Reporter do
     end
   end
 
-  defp report_to_json(reports) do
-    Enum.map(reports, fn {id, report} ->
-      report_to_json(id, report)
+  defp reports_to_json(reports) do
+    Enum.map(reports, fn %Report{
+                           id: id,
+                           plan_name: plan_name,
+                           maximums: maximums,
+                           script_error: script_error,
+                           result_json: result_json
+                         } ->
+      json = %{
+        "id" => id,
+        "name" => plan_name,
+        "maximums" => maximums,
+        "result" => result_json
+      }
+
+      if script_error do
+        Map.merge(json, %{"script_error" => script_error_to_json(script_error)})
+      else
+        json
+      end
     end)
-  end
-
-  defp report_to_json(id, %Report{
-         plan_name: plan_name,
-         maximums: maximums,
-         script_error: script_error,
-         result_json: result_json
-       }) do
-    json = %{
-      "id" => id,
-      "name" => plan_name,
-      "maximums" => maximums,
-      "result" => result_json
-    }
-
-    if script_error do
-      Map.merge(json, %{"script_error" => script_error_to_json(script_error)})
-    else
-      json
-    end
   end
 
   defp format_counters(counters) do
