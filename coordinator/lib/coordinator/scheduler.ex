@@ -101,6 +101,7 @@ defmodule Stressgrid.Coordinator.Scheduler do
 
     now =
       DateTime.utc_now()
+      |> DateTime.truncate(:second)
       |> DateTime.to_iso8601(:basic)
       |> String.replace(~r/[TZ\.]/, "")
 
