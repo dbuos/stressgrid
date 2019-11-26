@@ -116,7 +116,7 @@ export class Stressgrid {
     this.ws.onmessage = undefined;
   }
 
-  public run(runPlan: IRunPlan) {
+  public startRun(runPlan: IRunPlan) {
     this.send([{
       run_plan: runPlan
     }]);
