@@ -93,43 +93,39 @@ const numberRegex = /(.*)_number$/;
 
 const redCpuPercent = 80;
 
-function statsRows(liveReport: IStats<number[]> | null) {
-  if (liveReport) {
-    return _.map(liveReport, (values, key) => {
-      let color = "green";
-      if (errorCountRegex.test(key)) {
-        color = "red";
-      }
-      if (key === "cpu_percent") {
-        const value = _.first(values);
-        if (_.isNumber(value) && value >= redCpuPercent) {
-          color = "red";
-        }
-      }
-      return { pos: key, name: chalk[color](statsKey(key)), value: chalk[color].bold(statsValue(key, values)) };
-    });
-  }
-  return [];
+function statsRedCpuPercent(values: any[]): boolean {
+  const value = _.first(values);
+  return _.isNumber(value) && value > redCpuPercent;
 }
 
-function statsKey(key: string) {
+function statsError(key: string) {
+  return errorCountRegex.test(key);
+}
+
+function statsName(key: string) {
   let r: RegExpExecArray | null;
-  if ((r = bytesPerSecondRegex.exec(key)) !== null) {
+  r = bytesPerSecondRegex.exec(key);
+  if (r !== null) {
     return _.startCase(r[1]) + ' (throughput)';
   }
-  if ((r = perSecondRegex.exec(key)) !== null) {
+  r = perSecondRegex.exec(key)
+  if (r !== null) {
     return _.startCase(r[1]) + ' (rate)';
   }
-  if ((r = percentRegex.exec(key)) !== null) {
+  r = percentRegex.exec(key)
+  if (r !== null) {
     return _.startCase(r[1]) + ' (load)';
   }
-  if ((r = microsecondRegex.exec(key)) !== null) {
+  r = r = microsecondRegex.exec(key)
+  if (r !== null) {
     return _.startCase(r[1]) + ' (time)';
   }
-  if ((r = countRegex.exec(key)) !== null) {
+  r = countRegex.exec(key);
+  if (r !== null) {
     return _.startCase(r[1]) + ' (count)';
   }
-  if ((r = numberRegex.exec(key)) !== null) {
+  r = numberRegex.exec(key)
+  if (r !== null) {
     return _.startCase(r[1]) + ' (number)';
   }
 
@@ -167,6 +163,24 @@ function statsValue(key: string, values: any[]): string {
   }
 
   return value.toString();
+}
+
+function statsRows(liveReport: IStats<number[]> | null) {
+  if (liveReport) {
+    return _.map(liveReport, (values, key) => {
+      let color = "green";
+      if (statsError(key)) {
+        color = "red";
+      }
+      if (key === "cpu_percent") {
+        if (statsRedCpuPercent(values)) {
+          color = "red";
+        }
+      }
+      return { pos: key, name: chalk[color](statsName(key)), value: chalk[color].bold(statsValue(key, values)) };
+    });
+  }
+  return [];
 }
 
 function updateScreen(generatorCount: number, run: IRun | null, stats: IStats<number[]> | null) {
@@ -236,7 +250,7 @@ function runPlan(coordinatorHost: string, plan: IRunPlan) {
         process.exitCode = -1;
       }
       else {
-        sg.run(plan);
+        sg.startRun(plan);
       }
     },
     connected: () => { },
