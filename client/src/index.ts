@@ -222,7 +222,7 @@ function runPlan(coordinatorHost: string, plan: IRunPlan) {
       updateScreen(currentGeneratorCount, currentRun, currentStats);
 
       if (state.reports !== undefined) {
-        const report = _.last(state.reports);
+        const report = _.first(state.reports);
         if (report && currentRun && report.id === currentRun.id) {
           log.stderr.clear();
           log.stderr('');
