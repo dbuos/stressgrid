@@ -8,10 +8,14 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
 
   require Logger
 
-  defstruct [:region]
+  defstruct region: nil
 
-  def init() do
+  def init(_) do
     %CloudWatchReportWriter{region: detect_ec2_region()}
+  end
+
+  def start(writer) do
+    writer
   end
 
   def write(_, _, %CloudWatchReportWriter{region: nil} = writer, _, _), do: writer
@@ -165,13 +169,19 @@ defmodule Stressgrid.Coordinator.CloudWatchReportWriter do
   end
 
   defp detect_ec2_region do
-    with {:ok, %HTTPoison.Response{body: body}} <-
-           HTTPoison.get(@meta_data_placement_availability_zone),
-         [_, region] <- Regex.run(~r/(.*)[a-z]$/, body) do
-      region
-    else
-      _ ->
-        nil
+    case Map.get(System.get_env(), "AWS_REGION") do
+      nil ->
+        with {:ok, %HTTPoison.Response{body: body}} <-
+               HTTPoison.get(@meta_data_placement_availability_zone),
+             [_, region] <- Regex.run(~r/(.*)[a-z]$/, body) do
+          region
+        else
+          _ ->
+            nil
+        end
+
+      region ->
+        region
     end
   end
 end

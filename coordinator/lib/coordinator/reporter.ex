@@ -63,7 +63,20 @@ defmodule Stressgrid.Coordinator.Reporter do
   end
 
   def init(args) do
-    {:ok, %Reporter{writer_configs: args |> Keyword.get(:writer_configs, [])}}
+    :ok =
+      Management.notify_all(%{
+        "last_script_error" => nil,
+        "reports" => []
+      })
+
+    writer_configs =
+      args
+      |> Keyword.get(:writer_configs, [])
+      |> Enum.map(fn {module, params, interval_ms} ->
+        {module, Kernel.apply(module, :init, [params]), interval_ms}
+      end)
+
+    {:ok, %Reporter{writer_configs: writer_configs}}
   end
 
   def handle_cast(
@@ -156,7 +169,7 @@ defmodule Stressgrid.Coordinator.Reporter do
          %Writer{
            module: module,
            interval_ms: interval_ms,
-           state: Kernel.apply(module, :init, params)
+           state: Kernel.apply(module, :start, [params])
          }}
       end)
       |> Map.new()

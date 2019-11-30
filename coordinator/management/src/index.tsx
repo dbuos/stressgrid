@@ -29,8 +29,7 @@ const wsUrl = location.port === "3000" ?
 const sg = new Stressgrid({
   connected: () => undefined,
   disconnected: () => undefined,
-  init: (state) => { stateStore.update(state); },
-  notify: (state) => { stateStore.update(state); },
+  update: (state) => { stateStore.update(state); }
 });
 
 sg.connect(wsUrl, WebSocket);

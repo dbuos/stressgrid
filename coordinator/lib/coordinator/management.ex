@@ -1,5 +1,6 @@
 defmodule Stressgrid.Coordinator.Management do
   use GenServer
+  require Logger
 
   alias Stressgrid.Coordinator.{Management}
 
@@ -18,6 +19,8 @@ defmodule Stressgrid.Coordinator.Management do
   end
 
   def connect() do
+    Logger.info("Management connected")
+
     Registry.register(:management_connection_registry, nil, nil)
     GenServer.cast(__MODULE__, {:init_connection, self()})
   end
@@ -31,7 +34,7 @@ defmodule Stressgrid.Coordinator.Management do
         %Management{last_notify_json: last_notify_json} = management
       ) do
     Enum.each(Registry.lookup(:management_connection_registry, nil), fn {pid, nil} ->
-      _ = send(pid, {:send, :notify, json})
+      _ = send(pid, {:notify, json})
     end)
 
     last_notify_json = Map.merge(last_notify_json, json)
@@ -43,7 +46,7 @@ defmodule Stressgrid.Coordinator.Management do
         {:init_connection, pid},
         %Management{last_notify_json: last_notify_json} = management
       ) do
-    _ = send(pid, {:send, :init, last_notify_json})
+    _ = send(pid, {:notify, last_notify_json})
 
     {:noreply, management}
   end

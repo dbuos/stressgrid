@@ -36,17 +36,17 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
   end
 
   def websocket_info(
-        {:send, envelope, json},
+        {:notify, json},
         %ManagementConnection{} = connection
       ) do
-    text = Jason.encode!([%{envelope => json}])
+    text = Jason.encode!([%{"notify" => json}])
     {:reply, {:text, text}, connection}
   end
 
   defp receive_json(
          %ManagementConnection{} = connection,
          %{
-           "run_plan" =>
+           "start_run" =>
              %{
                "name" => plan_name,
                "blocks" => blocks_json,

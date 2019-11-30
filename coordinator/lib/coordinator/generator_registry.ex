@@ -32,6 +32,7 @@ defmodule Stressgrid.Coordinator.GeneratorRegistry do
   end
 
   def init(_args) do
+    :ok = Management.notify_all(%{"generator_count" => 0})
     {:ok, %GeneratorRegistry{}}
   end
 

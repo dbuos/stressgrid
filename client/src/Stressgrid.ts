@@ -75,13 +75,12 @@ export interface IRemoveReport {
 export interface IMessage {
   init?: IState;
   notify?: IState;
-  run_plan?: IRunPlan;
+  start_run?: IRunPlan;
   remove_report?: IRemoveReport;
 }
 
 export interface IStressgridEvents {
-  notify(state: IState): void;
-  init(state: IState): void;
+  update(state: IState): void;
   connected(): void;
   disconnected(): void;
 }
@@ -118,7 +117,7 @@ export class Stressgrid {
 
   public startRun(runPlan: IRunPlan) {
     this.send([{
-      run_plan: runPlan
+      start_run: runPlan
     }]);
   }
 
@@ -139,12 +138,9 @@ export class Stressgrid {
   }
 
   private handle(message: IMessage) {
-    const { notify, init } = message;
-    if (init) {
-      this.events.init(init);
-    }
+    const { notify } = message;
     if (notify) {
-      this.events.notify(notify);
+      this.events.update(notify);
     }
   }
 }

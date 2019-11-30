@@ -355,10 +355,10 @@ class App extends React.Component<IAppProps, IAppState> {
             {stateStore.state.reports && <table className="table">
               <thead>
                 <tr>
-                  <th scope="col" style={{ width: "50%" }}>Run</th>
+                  <th scope="col" style={{ width: "40%" }}>Run</th>
                   <th scope="col" style={{ width: "10%" }}>Errors</th>
                   <th scope="col" style={{ width: "15%" }}>Max CPU</th>
-                  <th scope="col" style={{ width: "25%" }}>Results</th>
+                  <th scope="col" style={{ width: "35%" }}>Results</th>
                 </tr>
               </thead>
               <tbody>

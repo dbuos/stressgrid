@@ -209,18 +209,41 @@ function runPlan(coordinatorHost: string, plan: IRunPlan) {
   let currentStats: IStats<number[]> | null = null;
 
   const sg = new Stressgrid({
-    notify: (state) => {
+    update: (state) => {
       if (state.generator_count !== undefined) {
         currentGeneratorCount = state.generator_count;
       }
-      if (state.stats !== undefined && state.stats !== null) {
+      if (state.stats !== undefined) {
         currentStats = state.stats;
       }
-      if (state.run !== undefined && state.run !== null) {
-        currentRun = state.run;
+      if (state.run !== undefined) {
+        if (state.run) {
+          if (currentRun) {
+            if (state.run.id === currentRun.id) {
+              currentRun = state.run;
+            }
+            else {
+              log.stderr.clear();
+              log.stderr(chalk.red('There is current run with different id!\n'));
+              sg.disconnect();
+              process.exitCode = -1;
+              return;
+            }
+          }
+          else {
+            if (state.run.name === plan.name) {
+              currentRun = state.run;
+            }
+            else {
+              log.stderr.clear();
+              log.stderr(chalk.red('There is current run with different name!\n'));
+              sg.disconnect();
+              process.exitCode = -1;
+              return;
+            }
+          }
+        }
       }
-      updateScreen(currentGeneratorCount, currentRun, currentStats);
-
       if (state.reports !== undefined) {
         const report = _.first(state.reports);
         if (report && currentRun && report.id === currentRun.id) {
@@ -228,32 +251,23 @@ function runPlan(coordinatorHost: string, plan: IRunPlan) {
           log.stderr('');
           log.stdout('http://' + coordinatorHost + ':8000/' + report.result.csv_url + '\n');
           sg.disconnect();
+          return;
         }
       }
-      if (state.last_script_error !== undefined && state.last_script_error !== null) {
-        log.stderr.clear();
-        log.stderr(chalk.red('Error in script:  ' + chalk.bold('line ' + state.last_script_error.line + ': ' + state.last_script_error.description) + '\n'));
-        log.stderr(chalk.red('Run aborted!\n'));
-        sg.abortRun();
-        sg.disconnect();
-        process.exitCode = -1;
+      if (state.last_script_error !== undefined) {
+        if (state.last_script_error !== null) {
+          log.stderr.clear();
+          log.stderr(chalk.red('Error in script:  ' + chalk.bold('line ' + state.last_script_error.line + ': ' + state.last_script_error.description) + '\n'));
+          sg.abortRun();
+          sg.disconnect();
+          process.exitCode = -1;
+          return;
+        }
       }
+
+      updateScreen(currentGeneratorCount, currentRun, currentStats);
     },
-    init: (state) => {
-      if (state.generator_count !== undefined) {
-        currentGeneratorCount = state.generator_count;
-      }
-      if (state.run !== undefined && state.run !== null) {
-        log.stderr.clear();
-        log.stderr(chalk.red('Please stop current run!\n'));
-        sg.disconnect();
-        process.exitCode = -1;
-      }
-      else {
-        sg.startRun(plan);
-      }
-    },
-    connected: () => { },
+    connected: () => { sg.startRun(plan); },
     disconnected: () => { }
   });
   sg.connect('ws://' + coordinatorHost + ':8000/ws', WS);

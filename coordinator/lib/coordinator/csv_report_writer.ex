@@ -10,7 +10,11 @@ defmodule Stressgrid.Coordinator.CsvReportWriter do
 
   defstruct table: %{}
 
-  def init() do
+  def init(_) do
+    nil
+  end
+
+  def start(nil) do
     %CsvReportWriter{}
   end
 
