@@ -365,7 +365,7 @@ To build the `sgcli` command line interface:
 
 To install the `sgcli` command:
 
-    $ sudo npm link
+    $ npm install -g
 
 # Running the coordinator from local build
 
