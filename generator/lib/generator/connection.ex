@@ -211,23 +211,27 @@ defmodule Stressgrid.Generator.Connection do
         params = block |> Map.get(:params, %{})
         size = block |> Map.get(:size, 1)
 
-        1..size
-        |> Enum.reduce(i, fn _, i ->
-          address =
-            addresses
-            |> Enum.at(rem(address_base + i, length(addresses)))
+        if size > 0 and addresses != [] do
+          1..size
+          |> Enum.reduce(i, fn _, i ->
+            address =
+              addresses
+              |> Enum.at(rem(address_base + i, length(addresses)))
 
-          {:ok, _} =
-            Device.Supervisor.start_child(
-              cohort_pid,
-              "#{id}-#{i}",
-              address,
-              script,
-              params
-            )
+            {:ok, _} =
+              Device.Supervisor.start_child(
+                cohort_pid,
+                "#{id}-#{i}",
+                address,
+                script,
+                params
+              )
 
-          i + 1
-        end)
+            i + 1
+          end)
+        else
+          i
+        end
       end)
 
     %{connection | cohorts: cohorts |> Map.put(id, cohort_pid), address_base: address_base + i}
