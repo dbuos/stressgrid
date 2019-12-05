@@ -1,11 +1,25 @@
-before_script:
-  - mix local.hex --force
-  - mix local.rebar --force
-
 build_coordinator:
+  image: elixir:1.9.4
   stage: build
   tags:
-    - stressgrid
+    - docker
+  variables:
+    MIX_ENV: prod
+  script:
+    - mix local.hex --force
+    - mix local.rebar --force
+    - pushd coordinator/
+    - mix deps.get
+    - mix format --check-formatted
+    - mix compile --warnings-as-errors
+    - mix dialyzer
+    - popd
+
+build_coordinator_management:
+  image: node:8.16.2
+  stage: build
+  tags:
+    - docker
   variables:
     MIX_ENV: prod
   script:
@@ -14,27 +28,29 @@ build_coordinator:
     - npm run build-css
     - npm run build
     - popd
-    - pushd coordinator/
-    - mix deps.get
-    - mix release
-    - popd
 
 build_generator:
+  image: elixir:1.9.4
   stage: build
   tags:
-    - stressgrid
+    - docker
   variables:
     MIX_ENV: prod
   script:
+    - mix local.hex --force
+    - mix local.rebar --force
     - pushd generator/
     - mix deps.get
-    - mix release
+    - mix format --check-formatted
+    - mix compile --warnings-as-errors
+    - mix dialyzer
     - popd
 
 build_client:
+  image: node:8.16.2
   stage: build
   tags:
-    - stressgrid
+    - docker
   script:
     - pushd client/
     - npm install
