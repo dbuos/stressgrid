@@ -138,7 +138,10 @@ resource "google_compute_instance_group_manager" "generator" {
   name = "stressgrid-generator"
 
   base_instance_name = "stressgrid-generator"
-  instance_template  = "${google_compute_instance_template.generator.self_link}"
+
+  version {
+    instance_template  = google_compute_instance_template.generator.self_link
+  }
 
   target_size = var.capacity
 }
