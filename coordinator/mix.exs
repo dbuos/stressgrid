@@ -24,7 +24,8 @@ defmodule Stressgrid.Coordinator.MixProject do
       {:jason, "~> 1.1"},
       {:hdr_histogram, "~> 0.3.2"},
       {:ex_aws_cloudwatch, "~> 2.0"},
-      {:httpoison, "~> 1.6"}
+      {:httpoison, "~> 1.6"},
+      {:dialyxir, "~> 1.0.0-rc.7", runtime: false}
     ]
   end
 end
