@@ -63,12 +63,10 @@ defmodule Stressgrid.Generator.UdpDevice do
     device =
       case :gen_udp.send(socket, ip, port, datagram) do
         :ok ->
-          device
-          |> Device.do_inc_counter(:datagram, 1)
+          Device.do_inc_counter(device, :send, 1)
 
         {:error, reason} ->
-          device
-          |> Device.do_inc_counter(reason |> udp_reason_to_key(), 1)
+          Device.do_inc_counter(device, udp_reason_to_key(reason), 1)
       end
 
     {:reply, :ok, device}
@@ -104,6 +102,8 @@ defmodule Stressgrid.Generator.UdpDevice do
       {:noreply, device}
     else
       Logger.debug("Received UDP datagram from #{:inet.ntoa(ip)}:#{port}")
+
+      device = Device.do_inc_counter(device, :receive, 1)
 
       {:noreply, %{device | received_datagrams: received_datagrams ++ [datagram]}}
     end
