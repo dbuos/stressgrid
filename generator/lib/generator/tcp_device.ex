@@ -71,11 +71,10 @@ defmodule Stressgrid.Generator.TcpDevice do
     device =
       case :gen_tcp.send(socket, data) do
         :ok ->
-          device
+          Device.do_inc_counter(device, :send, 1)
 
         {:error, reason} ->
-          device
-          |> Device.do_inc_counter(reason |> tcp_reason_to_key(), 1)
+          Device.do_inc_counter(device, tcp_reason_to_key(reason), 1)
       end
 
     {:reply, :ok, device}
@@ -119,6 +118,8 @@ defmodule Stressgrid.Generator.TcpDevice do
       {:noreply, device}
     else
       Logger.debug("Received TCP data")
+
+      device = Device.do_inc_counter(device, :receive, 1)
 
       {:noreply, %{device | received_iodata: received_iodata ++ [data]}}
     end
