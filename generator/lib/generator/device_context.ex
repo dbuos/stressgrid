@@ -35,10 +35,9 @@ defmodule Stressgrid.Generator.DeviceContext do
     end
   end
 
-  def delay(milliseconds, deviation_ratio \\ 0)
-      when deviation_ratio >= 0 and deviation_ratio < 1 do
-    deviation = milliseconds * deviation_ratio
-    Process.sleep(trunc(milliseconds + deviation / 2 - deviation * :rand.uniform()))
+  def delay(milliseconds, random_ratio \\ 0)
+      when random_ratio >= 0.0 and random_ratio <= 1.0 do
+    Process.sleep(trunc(milliseconds * (1.0 + random_ratio * (:rand.uniform() * 2.0 - 1.0))))
   end
 
   def random_bits(size) when size > 0 do
