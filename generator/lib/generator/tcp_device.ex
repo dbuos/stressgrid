@@ -154,7 +154,11 @@ defmodule Stressgrid.Generator.TcpDevice do
           device
       ) do
     Logger.debug("Received TCP data for waiting receive")
+
     GenServer.reply(receive_from, {:ok, [data]})
+
+    device = Device.do_inc_counter(device, :receive, 1)
+
     {:noreply, %{device | waiting_receive_froms: waiting_receive_froms}}
   end
 

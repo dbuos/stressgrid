@@ -115,7 +115,11 @@ defmodule Stressgrid.Generator.UdpDevice do
           device
       ) do
     Logger.debug("Received UDP datagram from #{:inet.ntoa(ip)}:#{port} for waiting receive")
+
     GenServer.reply(receive_from, {:ok, datagram})
+
+    device = Device.do_inc_counter(device, :receive, 1)
+
     {:noreply, %{device | waiting_receive_froms: waiting_receive_froms}}
   end
 
