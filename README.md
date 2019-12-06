@@ -295,10 +295,10 @@ Fetch next frame from the receive buffer as binary, text, or map serialized as J
 
 Produces following built-in metrics.
 
-`send_count` : total number of sent buffers from the beginning of the test;
-`send_per_second`: the current rate of sent buffers;
-`receive_count` : total number of received buffers from the beginning of the test;
-`receive_per_second`: the current rate of received buffers.
+- `send_count` : total number of sent buffers from the beginning of the test;
+- `send_per_second`: the current rate of sent buffers;
+- `receive_count` : total number of received buffers from the beginning of the test;
+- `receive_per_second`: the current rate of received buffers.
 
 ```elixir
 send(data)
@@ -318,10 +318,10 @@ Wait for the specified timeout to receive the data. It no data is received, the 
 
 Produces following built-in metrics.
 
-`send_count` : total number of sent buffers from the beginning of the test;
-`send_per_second`: the current rate of sent buffers;
-`receive_count` : total number of received buffers from the beginning of the test;
-`receive_per_second`: the current rate of received buffers.
+- `send_count` : total number of sent buffers from the beginning of the test;
+- `send_per_second`: the current rate of sent buffers;
+- `receive_count` : total number of received buffers from the beginning of the test;
+- `receive_per_second`: the current rate of received buffers.
 
 ```elixir
 send(datagram)
@@ -426,7 +426,7 @@ The following are examples that showcase testing real systems using each support
   stop_timing(:get)
 
   # Delay for 1 second +/-5%
-  delay(1_000, 0.1)
+  delay(1_000, 0.05)
 end)
 ```
 
@@ -492,7 +492,7 @@ hmac = Base.encode16(:crypto.hmac(:sha256, secret, "#{socket_id}:#{channel}"), c
   end)
 
   # Delay for 1 second +/-5%
-  delay(1_000, 0.1)
+  delay(1_000, 0.05)
 end)
 ```
 
@@ -527,7 +527,7 @@ end)
   stop_timing(:get)
 
   # Delay for 1 second +/-5%
-  delay(1_000, 0.1)
+  delay(1_000, 0.05)
 end)
 ```
 
@@ -613,7 +613,7 @@ name = "stressgrid.com"
   end)
 
   # Delay for 1 second +/-5%
-  delay(1_000, 0.1)
+  delay(1_000, 0.05)
 end)
 ```
 
