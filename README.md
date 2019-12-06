@@ -1,5 +1,7 @@
 [![Slack](https://slack.stressgrid.com/badge.svg)](https://slack.stressgrid.com)
 
+Stressgrid is an open-source cloud-native tool for load testing at the scale of millions of simulated devices.
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -36,8 +38,6 @@
 - [Launching cloud instances](#launching-cloud-instances)
 
 ## Overview
-
-Stressgrid is an open-source cloud-native application for load testing at the scale of millions of simulated devices.
 
 Stressgrid supports the following network protocols.
 
