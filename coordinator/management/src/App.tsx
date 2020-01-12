@@ -128,36 +128,39 @@ function statsNameAndError(key: string): { name: string, error: boolean } {
   return { name: _.startCase(key), error: false };
 }
 
-function statsValue(key: string, values: Array<number | null>): string {
+const commaRegex = /\B(?=(\d{3})+(?!\d))/g;
+
+function statsValue(key: string, values: number[]): string {
   const value = _.first(values);
-  if (_.isNumber(value) && bytesPerSecondRegex.test(key)) {
-    return filesize(value) + "/sec";
-  }
-  if (_.isNumber(value) && perSecondRegex.test(key)) {
-    return value.toString() + " /sec";
-  }
-  if (_.isNumber(value) && percentRegex.test(key)) {
-    return Math.trunc(value).toString() + " %";
-  }
-  if (_.isNumber(value) && microsecondRegex.test(key)) {
-    if (value >= 1000000) {
-      return Math.trunc(value / 1000000).toString() + " seconds";
+  if (_.isNumber(value)) {
+    if (bytesPerSecondRegex.test(key)) {
+      return filesize(value) + "/sec";
     }
-    if (value >= 1000) {
-      return Math.trunc(value / 1000).toString() + " milliseconds";
+    if (perSecondRegex.test(key)) {
+      return value.toString().replace(commaRegex, ",") + " /sec";
     }
-    return value.toString() + " microseconds";
-  }
-  if (_.isNumber(value) && bytesCountRegex.test(key)) {
-    return filesize(value);
-  }
-  if (_.isNumber(value) && countRegex.test(key)) {
-    return value.toString();
-  }
-  if (_.isNumber(value) && numberRegex.test(key)) {
-    return value.toString();
-  }
-  if (value !== null && value !== undefined) {
+    if (percentRegex.test(key)) {
+      return Math.trunc(value).toString() + " %";
+    }
+    if (microsecondRegex.test(key)) {
+      if (value >= 1000000) {
+        return Math.trunc(value / 1000000).toString() + " seconds";
+      }
+      if (value >= 1000) {
+        return Math.trunc(value / 1000).toString() + " milliseconds";
+      }
+      return value.toString() + " microseconds";
+    }
+    if (bytesCountRegex.test(key)) {
+      return filesize(value);
+    }
+    if (countRegex.test(key)) {
+      return value.toString().replace(commaRegex, ",");
+    }
+    if (numberRegex.test(key)) {
+      return value.toString().replace(commaRegex, ",");
+    }
+
     return value.toString();
   }
 

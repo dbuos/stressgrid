@@ -32,7 +32,7 @@ export interface Report {
 
 export interface State {
   generator_count?: number;
-  stats?: Statistics<Array<number | null>> | null;
+  stats?: Statistics<number[]> | null;
   run?: Run | null;
   reports?: Report[];
   last_script_error?: ScriptError | null;

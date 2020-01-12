@@ -49,8 +49,8 @@ defmodule Stressgrid.Coordinator.ManagementReportWriter do
       end)
       |> Enum.concat(
         Enum.map(missing_keys, fn missing_key ->
-          values = Map.get(stats_history, missing_key)
-          values = Enum.take([nil | values], @max_history_size)
+          [previous_value | _] = values = Map.get(stats_history, missing_key)
+          values = Enum.take([previous_value | values], @max_history_size)
 
           {missing_key, values}
         end)
