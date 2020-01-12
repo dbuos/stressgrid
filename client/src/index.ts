@@ -89,7 +89,7 @@ function runRows(run: Run | null): Row[] {
 
 const redCpuPercent = 80;
 
-function statsRedCpuPercent(values: Array<number | null>): boolean {
+function statsRedCpuPercent(values: number[]): boolean {
   const value = _.first(values);
   return _.isNumber(value) && value > redCpuPercent;
 }
@@ -153,43 +153,46 @@ function statsNameAndError(key: string): { name: string, error: boolean } {
   return { name: _.startCase(key), error: false };
 }
 
-function statsValue(key: string, values: Array<number | null>): string {
+const commaRegex = /\B(?=(\d{3})+(?!\d))/g;
+
+function statsValue(key: string, values: number[]): string {
   const value = _.first(values);
-  if (_.isNumber(value) && bytesPerSecondRegex.test(key)) {
-    return filesize(value) + "/sec";
-  }
-  if (_.isNumber(value) && perSecondRegex.test(key)) {
-    return value.toString() + " /sec";
-  }
-  if (_.isNumber(value) && percentRegex.test(key)) {
-    return Math.trunc(value).toString() + " %";
-  }
-  if (_.isNumber(value) && microsecondRegex.test(key)) {
-    if (value >= 1000000) {
-      return Math.trunc(value / 1000000).toString() + " seconds";
+  if (_.isNumber(value)) {
+    if (bytesPerSecondRegex.test(key)) {
+      return filesize(value) + "/sec";
     }
-    if (value >= 1000) {
-      return Math.trunc(value / 1000).toString() + " milliseconds";
+    if (perSecondRegex.test(key)) {
+      return value.toString().replace(commaRegex, ",") + " /sec";
     }
-    return value.toString() + " microseconds";
-  }
-  if (_.isNumber(value) && bytesCountRegex.test(key)) {
-    return filesize(value);
-  }
-  if (_.isNumber(value) && countRegex.test(key)) {
-    return value.toString();
-  }
-  if (_.isNumber(value) && numberRegex.test(key)) {
-    return value.toString();
-  }
-  if (value !== null && value !== undefined) {
+    if (percentRegex.test(key)) {
+      return Math.trunc(value).toString() + " %";
+    }
+    if (microsecondRegex.test(key)) {
+      if (value >= 1000000) {
+        return Math.trunc(value / 1000000).toString() + " seconds";
+      }
+      if (value >= 1000) {
+        return Math.trunc(value / 1000).toString() + " milliseconds";
+      }
+      return value.toString() + " microseconds";
+    }
+    if (bytesCountRegex.test(key)) {
+      return filesize(value);
+    }
+    if (countRegex.test(key)) {
+      return value.toString().replace(commaRegex, ",");
+    }
+    if (numberRegex.test(key)) {
+      return value.toString().replace(commaRegex, ",");
+    }
+
     return value.toString();
   }
 
   return "-";
 }
 
-function statsRows(statistics: Statistics<Array<number | null>> | null): Row[] {
+function statsRows(statistics: Statistics<number[]> | null): Row[] {
   if (statistics) {
     return _.map(statistics, (values, key) => {
       const { name, error } = statsNameAndError(key);
@@ -205,7 +208,7 @@ function statsRows(statistics: Statistics<Array<number | null>> | null): Row[] {
   return [];
 }
 
-function updateScreen(generatorCount: number, run: Run | null, stats: Statistics<Array<number | null>> | null): void {
+function updateScreen(generatorCount: number, run: Run | null, stats: Statistics<number[]> | null): void {
   console.error(
     columnify(
       _.map(
@@ -228,7 +231,7 @@ function updateScreen(generatorCount: number, run: Run | null, stats: Statistics
 function runPlan(coordinatorHost: string, plan: RunPlan): void {
   let currentGeneratorCount: number = 0;
   let currentRun: Run | null = null;
-  let currentStats: Statistics<Array<number | null>> | null = null;
+  let currentStats: Statistics<number[]> | null = null;
 
   const sg = new Stressgrid({
     update: (state) => {
