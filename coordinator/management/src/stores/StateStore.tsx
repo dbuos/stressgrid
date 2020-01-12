@@ -1,16 +1,16 @@
 import * as _ from 'lodash';
 import { action, computed, observable } from 'mobx';
-import { IState } from '../Stressgrid';
+import { State } from '../Stressgrid';
 
 export class StateStore {
-  @observable public state: IState = {};
+  @observable public state: State = {};
   @observable public desiredSize: number = 10000;
 
   @action public clear = () => {
     this.state = {};
   }
 
-  @action public update = (state: IState) => {
+  @action public update = (state: State) => {
     this.state = _.clone(_.assign(this.state, state));
   }
 

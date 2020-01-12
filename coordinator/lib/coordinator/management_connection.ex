@@ -46,17 +46,15 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
   defp receive_json(
          %ManagementConnection{} = connection,
          %{
-           "start_run" =>
-             %{
-               "name" => plan_name,
-               "blocks" => blocks_json,
-               "addresses" => addresses_json,
-               "opts" => opts_json
-             } = plan
+           "start_run" => %{
+             "name" => plan_name,
+             "blocks" => blocks_json,
+             "addresses" => addresses_json,
+             "opts" => opts_json
+           }
          }
        )
        when is_binary(plan_name) and is_list(blocks_json) and is_list(addresses_json) do
-    script = plan |> Map.get("script")
     opts = parse_opts_json(opts_json)
 
     blocks =
@@ -66,12 +64,8 @@ defmodule Stressgrid.Coordinator.ManagementConnection do
           %{script: _} = block ->
             [block | acc]
 
-          block ->
-            if is_binary(script) do
-              [block |> Map.put(:script, script) | acc]
-            else
-              acc
-            end
+          _ ->
+            acc
         end
       end)
       |> Enum.reverse()
