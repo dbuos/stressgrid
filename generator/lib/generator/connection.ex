@@ -8,16 +8,19 @@ defmodule Stressgrid.Generator.Connection do
 
   @conn_timeout 5_000
   @report_interval 1_000
+  @snmp_known_counters %{
+    "Tcp.RetransSegs" => :tcp_retr_seg_error,
+    "Tcp.InErrs" => :tcp_bad_seg_error
+  }
 
   defstruct id: nil,
             conn_pid: nil,
             wall_times: nil,
-            net_bytes_rx: nil,
-            net_bytes_tx: nil,
             timeout_ref: nil,
             stream_ref: nil,
             cohorts: %{},
             address_base: 0,
+            base_network_stats: nil,
             network_device_name: nil
 
   def start_link(args) do
@@ -166,25 +169,28 @@ defmodule Stressgrid.Generator.Connection do
         end)
       end)
 
+    {connection, network_stats_scalars} =
+      network_stats_scalars(connection, active_device_number != 0)
+
     {:ok, cpu_percent, connection} = cpu_utilization_percent(connection)
+    telemetry_hists = Histogram.record(aggregate_hists, :cpu_percent, cpu_percent)
 
-    {:ok, network_rx_bytes_per_second, network_tx_bytes_per_second, connection} =
-      network_utilization(connection)
-
-    aggregate_hists = Histogram.record(aggregate_hists, :cpu_percent, cpu_percent)
-
-    aggregate_scalars =
-      Map.merge(aggregate_scalars, %{
-        {:active_device_number, :total} => active_device_number,
-        {:network_rx_bytes_per_second, :total} => network_rx_bytes_per_second,
-        {:network_tx_bytes_per_second, :total} => network_tx_bytes_per_second
-      })
+    telemetry_scalars =
+      Map.merge(
+        aggregate_scalars,
+        Map.merge(
+          %{
+            {:active_device_number, :total} => active_device_number
+          },
+          network_stats_scalars
+        )
+      )
 
     telemetry = %{
       first_script_error: first_script_error,
-      scalars: aggregate_scalars,
+      scalars: telemetry_scalars,
       hists:
-        aggregate_hists
+        telemetry_hists
         |> Enum.map(fn {key, hist} ->
           {key, :hdr_histogram.to_binary(hist)}
         end)
@@ -277,6 +283,67 @@ defmodule Stressgrid.Generator.Connection do
     %{connection | cohorts: %{}}
   end
 
+  defp network_stats_scalars(
+         %Connection{
+           network_device_name: network_device_name,
+           base_network_stats: base_network_stats
+         } = connection,
+         is_active
+       ) do
+    if is_active do
+      network_device_stats =
+        case read_network_device_stats(network_device_name) do
+          {:ok, stats} ->
+            stats
+
+          _ ->
+            %{}
+        end
+
+      network_snmp_stats =
+        case read_network_snmp_stats() do
+          {:ok, stats} ->
+            stats
+
+          _ ->
+            %{}
+        end
+
+      network_stats = Map.merge(network_device_stats, network_snmp_stats)
+
+      if base_network_stats != nil do
+        {connection,
+         network_stats
+         |> Enum.reduce(%{}, fn
+           {_, 0}, a ->
+             a
+
+           {key, value}, a ->
+             case Map.get(base_network_stats, key) do
+               nil ->
+                 a
+
+               ^value ->
+                 a
+
+               base_value ->
+                 Map.put(a, key, value - base_value)
+             end
+         end)
+         |> Enum.map(fn {key, value} -> {{:"network_#{key}", :count}, value} end)
+         |> Map.new()}
+      else
+        {%{connection | base_network_stats: network_stats}, %{}}
+      end
+    else
+      if base_network_stats != nil do
+        {%{connection | base_network_stats: nil}, %{}}
+      else
+        {connection, %{}}
+      end
+    end
+  end
+
   defp read_network_device_names do
     case File.read("/proc/net/dev") do
       {:ok, r} ->
@@ -327,22 +394,102 @@ defmodule Stressgrid.Generator.Connection do
     end
   end
 
+  defp read_network_snmp_stats do
+    case File.read("/proc/net/snmp") do
+      {:ok, r} ->
+        stats =
+          r
+          |> String.split("\n", trim: true)
+          |> Enum.chunk_every(2)
+          |> Enum.reduce(%{}, fn
+            [line0, line1], a ->
+              case {String.split(line0, ":", trim: true), String.split(line1, ":", trim: true)} do
+                {[group, headers], [group, values]} ->
+                  headers_and_values =
+                    Enum.zip(
+                      String.split(headers, " ", trim: true),
+                      String.split(values, " ", trim: true)
+                    )
+
+                  Enum.reduce(headers_and_values, a, fn {header, value}, a ->
+                    Map.put(
+                      a,
+                      "#{group}.#{header}",
+                      String.to_integer(value)
+                    )
+                  end)
+
+                _ ->
+                  a
+              end
+
+            _, a ->
+              a
+          end)
+          |> Enum.reduce(%{}, fn {snmp_key, value}, a ->
+            case Map.get(@snmp_known_counters, snmp_key) do
+              nil ->
+                a
+
+              known_key ->
+                Map.put(a, known_key, value)
+            end
+          end)
+
+        {:ok, stats}
+
+      error ->
+        Logger.error("Error reading /proc/net/snmp: #{inspect(error)}")
+        error
+    end
+  end
+
   defp read_network_device_stats(device_name) do
     case File.read("/proc/net/dev") do
       {:ok, r} ->
-        case r |> String.split("\n", trim: true) do
+        case String.split(r, "\n", trim: true) do
           [_ | [_ | devs]] ->
-            devs
-            |> Enum.reduce(:error, fn
+            Enum.reduce(devs, :error, fn
               dev, :error ->
-                case dev |> String.split(" ", trim: true) do
+                case String.split(dev, " ", trim: true) do
                   [header | info] ->
-                    case header |> String.trim_trailing(":") do
+                    case String.trim_trailing(header, ":") do
                       ^device_name ->
-                        bytes_rx = info |> Enum.at(0) |> String.to_integer()
-                        bytes_tx = info |> Enum.at(8) |> String.to_integer()
+                        [
+                          rx_bytes,
+                          rx_packets,
+                          rx_error,
+                          rx_dropped_error,
+                          rx_fifo_error,
+                          rx_frame_error,
+                          _,
+                          _,
+                          tx_bytes,
+                          tx_packets,
+                          tx_error,
+                          tx_dropped_error,
+                          tx_fifo_error,
+                          tx_collision_error,
+                          tx_carrier_error,
+                          _
+                        ] = info
 
-                        {:ok, bytes_rx, bytes_tx}
+                        {:ok,
+                         %{
+                           dev_rx_bytes: String.to_integer(rx_bytes),
+                           dev_rx_packets: String.to_integer(rx_packets),
+                           dev_rx_error: String.to_integer(rx_error),
+                           dev_rx_dropped_error: String.to_integer(rx_dropped_error),
+                           dev_rx_fifo_error: String.to_integer(rx_fifo_error),
+                           dev_rx_frame_error: String.to_integer(rx_frame_error),
+                           dev_tx_bytes: String.to_integer(tx_bytes),
+                           dev_tx_packets: String.to_integer(tx_packets),
+                           dev_tx_error: String.to_integer(tx_error),
+                           dev_tx_dropped_error: String.to_integer(tx_dropped_error),
+                           dev_tx_fifo_error: String.to_integer(tx_fifo_error),
+                           dev_tx_collision_error: String.to_integer(tx_collision_error),
+                           dev_tx_carrier_error: String.to_integer(tx_carrier_error)
+                         }}
 
                       _ ->
                         :error
@@ -388,38 +535,5 @@ defmodule Stressgrid.Generator.Connection do
     utilization_percent = round(utilization * 100)
 
     {:ok, utilization_percent, %{connection | wall_times: next_wall_times}}
-  end
-
-  defp network_utilization(
-         %Connection{
-           net_bytes_rx: nil,
-           net_bytes_tx: nil,
-           network_device_name: network_device_name
-         } = connection
-       ) do
-    case read_network_device_stats(network_device_name) do
-      {:ok, bytes_rx, bytes_tx} ->
-        {:ok, 0, 0, %{connection | net_bytes_rx: bytes_rx, net_bytes_tx: bytes_tx}}
-
-      _ ->
-        {:ok, 0, 0, connection}
-    end
-  end
-
-  defp network_utilization(
-         %Connection{
-           net_bytes_rx: bytes_rx0,
-           net_bytes_tx: bytes_tx0,
-           network_device_name: network_device_name
-         } = connection
-       ) do
-    case read_network_device_stats(network_device_name) do
-      {:ok, bytes_rx1, bytes_tx1} ->
-        {:ok, bytes_rx1 - bytes_rx0, bytes_tx1 - bytes_tx0,
-         %{connection | net_bytes_rx: bytes_rx1, net_bytes_tx: bytes_tx1}}
-
-      _ ->
-        {:ok, 0, 0, %{connection | net_bytes_rx: nil, net_bytes_tx: nil}}
-    end
   end
 end
