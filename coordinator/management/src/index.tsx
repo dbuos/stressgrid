@@ -30,9 +30,7 @@ const sg = new Stressgrid({
   connected: () => undefined,
   disconnected: () => undefined,
   update: (state) => { stateStore.update(state); }
-});
-
-sg.connect(wsUrl, WebSocket);
+}, wsUrl, WebSocket);
 
 ReactDOM.render(
   <Provider stateStore={stateStore} sg={sg}>

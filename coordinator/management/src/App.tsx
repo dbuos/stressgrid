@@ -8,14 +8,14 @@ import { Sparklines, SparklinesLine, SparklinesSpots } from 'react-sparklines';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 
 import { StateStore, } from './stores/StateStore'
-import { Stressgrid } from './Stressgrid';
+import { Protocol, RunPlan, Stressgrid } from './Stressgrid';
 
 const defaultScript = `0..100 |> Enum.each(fn _ ->
   get("/")
   delay(900, 0.1)
 end)`;
 
-const defaultPlan = {
+const defaultPlan: RunPlan = {
   addresses: [{
     host: 'localhost',
     port: 5000,
@@ -23,6 +23,7 @@ const defaultPlan = {
   }],
   blocks: [{
     params: {},
+    script: defaultScript,
     size: 10000
   }],
   name: '10k',
@@ -31,16 +32,15 @@ const defaultPlan = {
     rampdown_step_ms: 900,
     rampup_step_ms: 900,
     sustain_ms: 900000
-  },
-  script: defaultScript
+  }
 };
 
-interface IAppProps {
+interface AppProps {
   stateStore?: StateStore;
   sg?: Stressgrid;
 }
 
-interface IAppState {
+interface AppState {
   error?: string;
   planModal: boolean;
   advanced: boolean;
@@ -50,20 +50,11 @@ interface IAppState {
   params: string;
   host: string;
   port: number;
-  protocol: string;
+  protocol: Protocol;
   rampupSecs: number;
   sustainSecs: number;
   rampdownSecs: number;
 }
-
-const errorCountRegex = /.*_error_?(count|per_second)$/;
-
-const bytesPerSecondRegex = /(.*)_bytes_per_second$/;
-const perSecondRegex = /(.*)_per_second$/;
-const percentRegex = /(.*)_percent$/;
-const microsecondRegex = /(.*)_us$/;
-const countRegex = /(.*)_count$/;
-const numberRegex = /(.*)_number$/;
 
 const redCpuPercent = 80;
 
@@ -72,63 +63,93 @@ function statsRedCpuPercent(values: any[]): boolean {
   return _.isNumber(value) && value > redCpuPercent;
 }
 
-function statsError(key: string) {
-  return errorCountRegex.test(key);
-}
+const errorCountRegex = /.*_error_count$/;
 
 function hasErrors(keys: string[]) {
   return _.some(keys, key => errorCountRegex.test(key));
 }
 
-function statsName(key: string) {
+const bytesPerSecondRegex = /(.*)_bytes_per_second$/;
+const perSecondRegex = /(.*)_per_second$/;
+const percentRegex = /(.*)_percent$/;
+const microsecondRegex = /(.*)_us$/;
+const bytesCountRegex = /(.*)_bytes_count$/;
+const countRegex = /(.*)_count$/;
+const numberRegex = /(.*)_number$/;
+const errorRegex = /(.*)_error$/;
+
+function statsNameAndError(key: string): { name: string, error: boolean } {
   let r: RegExpExecArray | null;
   r = bytesPerSecondRegex.exec(key);
   if (r !== null) {
-    return _.startCase(r[1]) + ' (throughput)';
+    return { name: _.startCase(r[1]) + " (throughput)", error: false };
   }
   r = perSecondRegex.exec(key)
   if (r !== null) {
-    return _.startCase(r[1]) + ' (rate)';
+    let name = r[1];
+    let error = false;
+    r = errorRegex.exec(name);
+
+    if (r !== null) {
+      name = r[1];
+      error = true;
+    }
+    return { name: _.startCase(name) + " (rate)", error };
   }
   r = percentRegex.exec(key)
   if (r !== null) {
-    return _.startCase(r[1]) + ' (load)';
+    return { name: _.startCase(r[1]) + " (load)", error: false };
   }
   r = r = microsecondRegex.exec(key)
   if (r !== null) {
-    return _.startCase(r[1]) + ' (time)';
+    return { name: _.startCase(r[1]) + " (time)", error: false };
+  }
+  r = bytesCountRegex.exec(key);
+  if (r !== null) {
+    return { name: _.startCase(r[1]) + " (volume)", error: false };
   }
   r = countRegex.exec(key);
   if (r !== null) {
-    return _.startCase(r[1]) + ' (count)';
+    let name = r[1];
+    let error = false;
+    r = errorRegex.exec(name);
+
+    if (r !== null) {
+      name = r[1];
+      error = true;
+    }
+    return { name: _.startCase(name) + " (count)", error };
   }
   r = numberRegex.exec(key)
   if (r !== null) {
-    return _.startCase(r[1]) + ' (number)';
+    return { name: _.startCase(r[1]) + " (number)", error: false };
   }
 
-  return _.startCase(key);
+  return { name: _.startCase(key), error: false };
 }
 
-function statsValue(key: string, values: any[]): string {
+function statsValue(key: string, values: Array<number | null>): string {
   const value = _.first(values);
   if (_.isNumber(value) && bytesPerSecondRegex.test(key)) {
-    return filesize(value) + '/sec';
+    return filesize(value) + "/sec";
   }
   if (_.isNumber(value) && perSecondRegex.test(key)) {
-    return value.toString() + ' /sec';
+    return value.toString() + " /sec";
   }
   if (_.isNumber(value) && percentRegex.test(key)) {
-    return Math.trunc(value).toString() + ' %';
+    return Math.trunc(value).toString() + " %";
   }
   if (_.isNumber(value) && microsecondRegex.test(key)) {
     if (value >= 1000000) {
-      return Math.trunc(value / 1000000).toString() + ' seconds';
+      return Math.trunc(value / 1000000).toString() + " seconds";
     }
     if (value >= 1000) {
-      return Math.trunc(value / 1000).toString() + ' milliseconds';
+      return Math.trunc(value / 1000).toString() + " milliseconds";
     }
-    return value.toString() + ' microseconds';
+    return value.toString() + " microseconds";
+  }
+  if (_.isNumber(value) && bytesCountRegex.test(key)) {
+    return filesize(value);
   }
   if (_.isNumber(value) && countRegex.test(key)) {
     return value.toString();
@@ -136,11 +157,11 @@ function statsValue(key: string, values: any[]): string {
   if (_.isNumber(value) && numberRegex.test(key)) {
     return value.toString();
   }
-  if (value === null) {
-    return '-';
+  if (value !== null && value !== undefined) {
+    return value.toString();
   }
 
-  return value.toString();
+  return "-";
 }
 
 function statsSparkline(values: any[]): number[] {
@@ -150,8 +171,8 @@ function statsSparkline(values: any[]): number[] {
 @inject('stateStore')
 @inject('sg')
 @observer
-class App extends React.Component<IAppProps, IAppState> {
-  constructor(props: IAppProps) {
+class App extends React.Component<AppProps, AppState> {
+  constructor(props: AppProps) {
     super(props);
     this.state = {
       advanced: false,
@@ -160,12 +181,12 @@ class App extends React.Component<IAppProps, IAppState> {
       name: defaultPlan.name,
       params: JSON.stringify(defaultPlan.blocks[0].params),
       planModal: false,
-      port: defaultPlan.addresses[0].port,
-      protocol: defaultPlan.addresses[0].protocol,
-      rampdownSecs: Math.trunc((defaultPlan.opts.ramp_steps * defaultPlan.opts.rampdown_step_ms) / 1000),
-      rampupSecs: Math.trunc((defaultPlan.opts.ramp_steps * defaultPlan.opts.rampup_step_ms) / 1000),
+      port: defaultPlan.addresses[0].port!,
+      protocol: defaultPlan.addresses[0].protocol!,
+      rampdownSecs: Math.trunc((defaultPlan.opts.ramp_steps! * defaultPlan.opts.rampdown_step_ms!) / 1000),
+      rampupSecs: Math.trunc((defaultPlan.opts.ramp_steps! * defaultPlan.opts.rampup_step_ms!) / 1000),
       script: defaultScript,
-      sustainSecs: Math.trunc(defaultPlan.opts.sustain_ms / 1000)
+      sustainSecs: Math.trunc(defaultPlan.opts.sustain_ms! / 1000)
     };
   }
 
@@ -333,11 +354,12 @@ class App extends React.Component<IAppProps, IAppState> {
                   </td>
                 </tr>}
                 {stateStore.state.stats && _.map(stateStore.state.stats, (values, key) => {
+                  const { name, error } = statsNameAndError(key)
                   return <tr>
-                    <th scope="row">{statsName(key)}</th>
+                    <th scope="row">{name}</th>
                     <td>{statsValue(key, values)}
                       {key === "cpu_percent" ? <span>&nbsp;<FontAwesomeIcon style={{ color: statsRedCpuPercent(values) ? "red" : "green" }} icon="cog" spin={true} /></span> : null}
-                      {statsError(key) ? <span>&nbsp;<FontAwesomeIcon style={{ color: "red" }} icon="flag" /></span> : null}
+                      {error ? <span>&nbsp;<FontAwesomeIcon style={{ color: "red" }} icon="flag" /></span> : null}
                     </td>
                     <td>
                       <Sparklines data={statsSparkline(values)} height={20}>
@@ -413,7 +435,7 @@ class App extends React.Component<IAppProps, IAppState> {
   }
 
   private updateProtocol = (event: React.SyntheticEvent<HTMLSelectElement>) => {
-    this.setState({ protocol: event.currentTarget.value });
+    this.setState({ protocol: event.currentTarget.value as Protocol });
   }
 
   private updateHost = (event: React.SyntheticEvent<HTMLInputElement>) => {
@@ -494,6 +516,7 @@ class App extends React.Component<IAppProps, IAppState> {
             }),
             blocks: [{
               params: JSON.parse(this.state.params),
+              script: this.state.script,
               size
             }],
             name,
@@ -502,8 +525,7 @@ class App extends React.Component<IAppProps, IAppState> {
               rampdown_step_ms: rampdownStepMs,
               rampup_step_ms: rampupStepMs,
               sustain_ms: sustainMs
-            },
-            script: this.state.script
+            }
           });
           this.hidePlanModal();
         }
