@@ -20,7 +20,7 @@ defmodule Stressgrid.Generator.Connection do
             stream_ref: nil,
             cohorts: %{},
             address_base: 0,
-            base_network_stats: nil,
+            previous_network_stats: nil,
             network_device_name: nil
 
   def start_link(args) do
@@ -286,7 +286,7 @@ defmodule Stressgrid.Generator.Connection do
   defp network_stats_scalars(
          %Connection{
            network_device_name: network_device_name,
-           base_network_stats: base_network_stats
+           previous_network_stats: previous_network_stats
          } = connection,
          is_active
        ) do
@@ -309,35 +309,37 @@ defmodule Stressgrid.Generator.Connection do
             %{}
         end
 
-      network_stats = Map.merge(network_device_stats, network_snmp_stats)
+      next_network_stats = Map.merge(network_device_stats, network_snmp_stats)
 
-      if base_network_stats != nil do
-        {connection,
-         network_stats
-         |> Enum.reduce(%{}, fn
-           {_, 0}, a ->
-             a
+      scalars =
+        if previous_network_stats != nil do
+          next_network_stats
+          |> Enum.reduce(%{}, fn
+            {_, 0}, a ->
+              a
 
-           {key, value}, a ->
-             case Map.get(base_network_stats, key) do
-               nil ->
-                 a
+            {key, value}, a ->
+              case Map.get(previous_network_stats, key) do
+                nil ->
+                  a
 
-               ^value ->
-                 a
+                ^value ->
+                  a
 
-               base_value ->
-                 Map.put(a, key, value - base_value)
-             end
-         end)
-         |> Enum.map(fn {key, value} -> {{:"network_#{key}", :count}, value} end)
-         |> Map.new()}
-      else
-        {%{connection | base_network_stats: network_stats}, %{}}
-      end
+                previous_value ->
+                  Map.put(a, key, value - previous_value)
+              end
+          end)
+          |> Enum.map(fn {key, value} -> {{:"network_#{key}", :count}, value} end)
+          |> Map.new()
+        else
+          %{}
+        end
+
+      {%{connection | previous_network_stats: next_network_stats}, scalars}
     else
-      if base_network_stats != nil do
-        {%{connection | base_network_stats: nil}, %{}}
+      if previous_network_stats != nil do
+        {%{connection | previous_network_stats: nil}, %{}}
       else
         {connection, %{}}
       end
