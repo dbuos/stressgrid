@@ -121,7 +121,7 @@ The apply command will output the URL of the Stressgrid management website as `c
 
 ### Management website
 
-![Stressgrid management website](https://gitlab.com/stressgrid/stressgrid/raw/master/doc/management.gif)
+![Management Website](doc/web.gif)
 
 The Stressgrid management dashboard is the place to define and run your test plans. The dashboard has the following settings:
 
@@ -138,6 +138,8 @@ The Stressgrid management dashboard is the place to define and run your test pla
 The **Rampup**, **Sustain**, and **Rampdown** values define the timing parameters of the workload, in seconds. Rampup and rampdown intervals are divided into a number of discrete steps, each one adding or removing device connections. The sustain interval is when the target number of device connections is maintained.
 
 ### `sgcli`
+
+![Command Line Interface](doc/cli.gif)
 
 Alternatively you can use `sgcli` command line interface.
 
