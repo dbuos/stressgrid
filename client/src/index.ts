@@ -7,7 +7,18 @@ import chalk, { Chalk } from "chalk";
 import filesize from "filesize";
 import columnify from "columnify";
 import WS from "ws";
-import { Stressgrid, RunPlan, Run, Statistics } from "./Stressgrid"
+import { Stressgrid, RunPlan, Run, Statistics, Protocol } from "./Stressgrid"
+
+interface Options {
+  targetHosts?: string;
+  targetPort?: number;
+  targetProtocol?: string;
+  scriptParams?: string;
+  size?: number;
+  rampdown?: number;
+  rampup?: number;
+  sustain?: number;
+}
 
 program
   .option("-c, --coordinator-host <string>", "coordinator host (localhost)")
@@ -24,34 +35,14 @@ program
   .option("--rampup <number>", "rampup seconds (900)", parseInt)
   .option("--sustain <number>", "sustain seconds (900)", parseInt)
   .option("--rampdown <number>", "rampdown seconds (900)", parseInt)
-  .action((name, script, options) => {
-    const coordinatorHost = _.defaultTo(program.coordinatorHost, "localhost");
+  .action((name: string, script: string, options: Options) => {
+    const coordinatorHost = _.defaultTo(program.coordinatorHost, "localhost") as string;
     if (!fs.existsSync(script)) {
       console.error("Script not found");
       process.exit(-1);
     }
-    const plan: RunPlan = {
-      addresses: _.map(_.split(_.defaultTo(options.targetHosts, "localhost"), ","), host => {
-        return {
-          host: _.trim(host),
-          port: _.defaultTo(options.targetPort, 5000),
-          protocol: _.defaultTo(options.targetProtocol, "http")
-        };
-      }),
-      blocks: [{
-        params: JSON.parse(_.defaultTo(options.scriptParams, "{}")),
-        script: fs.readFileSync(script).toString(),
-        size: _.defaultTo(options.size, 10000)
-      }],
-      name,
-      opts: {
-        ramp_steps: 1000,
-        rampdown_step_ms: _.defaultTo(options.rampdown, 900),
-        rampup_step_ms: _.defaultTo(options.rampup, 900),
-        sustain_ms: _.defaultTo(options.sustain, 900) * 1000
-      }
-    };
-    runPlan(coordinatorHost, plan);
+
+    runPlan(coordinatorHost, name, fs.readFileSync(script).toString(), options as Options);
   });
 
 program.parse(process.argv);
@@ -228,7 +219,7 @@ function updateScreen(generatorCount: number, run: Run | null, stats: Statistics
   );
 }
 
-function runPlan(coordinatorHost: string, plan: RunPlan): void {
+function runPlan(coordinatorHost: string, name: string, scriptText: string, options: Options): void {
   let currentGeneratorCount: number = 0;
   let currentRun: Run | null = null;
   let currentStats: Statistics<number[]> | null = null;
@@ -255,7 +246,7 @@ function runPlan(coordinatorHost: string, plan: RunPlan): void {
             }
           }
           else {
-            if (state.run.name === plan.name) {
+            if (state.run.name === name) {
               currentRun = state.run;
             }
             else {
@@ -264,6 +255,41 @@ function runPlan(coordinatorHost: string, plan: RunPlan): void {
               process.exitCode = -1;
               return;
             }
+          }
+        }
+        else {
+          if (currentGeneratorCount !== 0) {
+            const rampStepSize = currentGeneratorCount * 10;
+            const rampSteps = Math.trunc(_.defaultTo(options.size, 10000) / rampStepSize);
+
+            const plan: RunPlan = {
+              addresses: _.map(_.split(_.defaultTo(options.targetHosts, "localhost"), ","), host => {
+                return {
+                  host: _.trim(host),
+                  port: _.defaultTo(options.targetPort, 5000),
+                  protocol: _.defaultTo(options.targetProtocol, "http") as Protocol
+                };
+              }),
+              blocks: [{
+                params: JSON.parse(_.defaultTo(options.scriptParams, "{}")),
+                script: scriptText,
+                size: rampSteps * rampStepSize
+              }],
+              name,
+              opts: {
+                ramp_steps: rampSteps,
+                rampdown_step_ms: Math.trunc((_.defaultTo(options.rampdown, 900) * 1000) / rampSteps),
+                rampup_step_ms: Math.trunc((_.defaultTo(options.rampup, 900) * 1000) / rampSteps),
+                sustain_ms: _.defaultTo(options.sustain, 900) * 1000
+              }
+            };
+            sg.startRun(plan);
+          }
+          else {
+            console.log(chalk.red("No generators available"));
+            sg.disconnect();
+            process.exitCode = -1;
+            return;
           }
         }
       }
@@ -287,7 +313,7 @@ function runPlan(coordinatorHost: string, plan: RunPlan): void {
 
       updateScreen(currentGeneratorCount, currentRun, currentStats);
     },
-    connected: () => { sg.startRun(plan); },
+    connected: () => { },
     disconnected: () => { }
   }, "ws://" + coordinatorHost + ":8000/ws", WS);
   process.on("SIGINT", function () {
