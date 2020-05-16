@@ -1,4 +1,4 @@
-[![Slack](https://slack.stressgrid.com/badge.svg)](https://slack.stressgrid.com)
+[![Matrix Chat](https://img.shields.io/matrix/stressgrid:matrix.org?server_fqdn=matrix.org)](https://matrix.to/#/#stressgrid:matrix.org)
 
 Stressgrid is an open-source cloud-native tool for load testing at the scale of millions of simulated devices.
 
