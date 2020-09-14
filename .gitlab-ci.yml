@@ -1,5 +1,5 @@
 build_coordinator:
-  image: elixir:1.9.4
+  image: elixir:1.10.4
   stage: build
   tags:
     - docker
@@ -30,7 +30,7 @@ build_coordinator_management:
     - popd
 
 build_generator:
-  image: elixir:1.9.4
+  image: elixir:1.10.4
   stage: build
   tags:
     - docker
