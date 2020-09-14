@@ -623,7 +623,8 @@ end)
 
 If you are not running in AWS or are unwilling to use Stressgrid's AMIs, you can build the coordinator and the generator releases yourself. To build Stressgrid releases you’ll need the following:
 
-- Elixir 1.9
+- Erlang OTP 23
+- Elixir 1.10
 - GNU C compiler (for HDR histograms)
 - Node.js 8.16.0 (for the management dashboard and the CLI)
 
