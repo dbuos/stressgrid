@@ -123,6 +123,12 @@ defmodule Stressgrid.Generator.GunDeviceContext do
     end
   end
 
+  defmacro init_second_connection() do
+    quote do
+      GunDevice.init_second_connection(var!(device_pid))
+    end
+  end
+
   defmacro ws_fetch_binary() do
     quote do
       case ws_fetch() do
